@@ -232,6 +232,8 @@ class AmanWindow(QMainWindow):
         self._web_context = ""
         self._browser_page = ("", "", "")
         self._pending_research_prompt = None
+        self._pending_page_prompt = None
+        self._page_read_ready = False
         self._research_ready = False
         self._build_ui()
         self._log("INFO", "Aman application started")
@@ -702,9 +704,29 @@ class AmanWindow(QMainWindow):
 
 
     def _use_browser_page(self, title: str, url: str, page_text: str):
+        self._browser_page = (title, url, page_text)
         self._web_context = self._format_web_context(title, url, page_text)
         self.show_chat()
+        if self._pending_page_prompt is not None:
+            prompt = self._pending_page_prompt
+            self._pending_page_prompt = None
+            if not url or not (page_text or "").strip():
+                self._set_status("The current built-in browser page has no readable text.")
+                self._append("Aman", "I could not read the current page in Aman's built-in browser. Open the page in the Browser tab and try again. I cannot access a separate Edge or Chrome tab.")
+                return
+            self._page_read_ready = True
+            self.message_input.setText(prompt)
+            self._set_status("Current built-in browser page captured. Reviewing its extracted content…")
+            QTimer.singleShot(0, self.send_message)
+            return
         self._set_status("Current webpage added as research context. Ask Aman about it.")
+
+    def _is_current_page_request(self, prompt: str) -> bool:
+        return bool(re.search(
+            r"\b(?:read|summari[sz]e|explain|describe|what is on|what does)\b.*\b(?:current(?:ly)? open|this page|the page|browser|webpage|website)\b|\b(?:current(?:ly)? open)\b.*\b(?:page|browser|webpage|website)\b",
+            prompt,
+            flags=re.I,
+        ))
 
     def _is_research_request(self, prompt: str) -> bool:
         return bool(re.search(
@@ -729,6 +751,16 @@ class AmanWindow(QMainWindow):
         prompt = self.message_input.text().strip()
         if not prompt:
             return
+        if self._is_current_page_request(prompt) and not self._page_read_ready:
+            if not self.engine.is_ready:
+                self._set_status("Aman is still getting ready. You can ask it to read the page in a moment.")
+                return
+            self._pending_page_prompt = prompt
+            self._set_status("Reading the page open in Aman's built-in browser…")
+            self.show_browser()
+            self.browser.use_current_page()
+            return
+        self._page_read_ready = False
         if self._try_open_website(prompt):
             return
         if not self.engine.is_ready:
