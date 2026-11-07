@@ -319,18 +319,19 @@ class AmanWindow(QMainWindow):
         self.chat.setFrameShape(QFrame.Shape.NoFrame)
         self.chat.setViewportMargins(0, 0, 0, 0)
         self.chat.document().setDefaultStyleSheet(
-            "body { color:#e8eaf0; font-family:'Segoe UI'; font-size:14px; } "
+            "body { color:#202123; font-family:'Segoe UI'; font-size:14px; } "
             ".welcome-wrap { max-width:720px; margin:72px auto 0 auto; text-align:center; } "
-            ".welcome-mark { display:inline-block; background:#e8edf7; color:#171a20; border-radius:18px; padding:13px 18px; font-size:23px; font-weight:700; margin-bottom:20px; } "
-            ".welcome { color:#f5f6fa; font-size:30px; font-weight:650; margin:8px 0 12px 0; } "
-            ".hint { color:#929bad; font-size:14px; line-height:1.6; margin-bottom:30px; } "
+            ".welcome-mark { display:inline-block; background:#202123; color:#ffffff; border-radius:18px; padding:13px 18px; font-size:23px; font-weight:700; margin-bottom:20px; } "
+            ".welcome { color:#202123; font-size:30px; font-weight:650; margin:8px 0 12px 0; } "
+            ".hint { color:#6b7280; font-size:14px; line-height:1.6; margin-bottom:30px; } "
             ".suggestions { text-align:center; margin:0 auto; } "
-            ".suggestions a { display:inline-block; color:#dbe4f4; background:#202631; border:1px solid #343e4e; border-radius:13px; padding:13px 16px; margin:6px; text-decoration:none; font-size:12px; } "
-            ".suggestions a:hover { background:#303b4d; border-color:#667b9b; color:#ffffff; } "
-            ".row { margin:22px auto; max-width:760px; } "
-            ".who { color:#a5b1c4; font-size:12px; font-weight:600; margin-bottom:9px; } "
-            ".user { background:#252c38; border:1px solid #394456; border-radius:16px; padding:14px 17px; color:#f4f5f7; } "
-            ".assistant { color:#e8eaf0; padding:5px 2px 18px 2px; line-height:1.8; } "
+            ".suggestions a { display:inline-block; color:#343434; background:#ffffff; border:1px solid #e5e7eb; border-radius:13px; padding:13px 16px; margin:6px; text-decoration:none; font-size:12px; } "
+            ".suggestions a:hover { background:#f3f4f6; border-color:#c9cdd4; color:#111827; } "
+            ".row { margin:18px auto; max-width:900px; } "
+            ".row-user { text-align:right; } .row-assistant { text-align:left; } "
+            ".who { color:#737780; font-size:11px; font-weight:600; margin-bottom:7px; } "
+            ".user { display:inline-block; background:#f1f1f1; border:1px solid #e7e7e7; border-radius:18px; padding:12px 16px; color:#202123; text-align:left; } "
+            ".assistant { display:inline-block; background:#f7f7f8; border:1px solid #ededee; border-radius:18px; padding:12px 16px; color:#202123; line-height:1.7; text-align:left; } "
         )
         self._show_welcome("Ask Aman anything. Your AI runs right here on your computer.")
         self.chat.setStyleSheet(
@@ -398,38 +399,41 @@ class AmanWindow(QMainWindow):
         self._copy_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
         self._copy_shortcut.activated.connect(self.copy_last_answer)
         self.setStyleSheet("""
-            QMainWindow, QWidget#root { background:#101218; }
-            QFrame#sidebar { background:#171a21; border-right:1px solid #292e38; }
-            QLabel#brandMark { background:#e8edf7; color:#171a20; border-radius:11px; font-size:20px; font-weight:700; }
-            QLabel#brandName { color:#f4f5f7; font-size:19px; font-weight:650; }
-            QLabel#sectionLabel { color:#737d8e; font-size:10px; font-weight:700; letter-spacing:1px; margin-top:20px; }
-            QListWidget#historyList { background:transparent; border:0; color:#cbd3e1; outline:0; font-size:12px; }
+            QMainWindow, QWidget#root { background:#ffffff; color:#202123; }
+            QFrame#sidebar { background:#f7f7f8; border-right:1px solid #e5e5e7; }
+            QLabel#brandMark { background:#202123; color:#ffffff; border-radius:11px; font-size:20px; font-weight:700; }
+            QLabel#brandName { color:#202123; font-size:19px; font-weight:650; }
+            QLabel#sectionLabel { color:#858891; font-size:10px; font-weight:700; letter-spacing:1px; margin-top:20px; }
+            QListWidget#historyList { background:transparent; border:0; color:#34363a; outline:0; font-size:12px; }
             QListWidget#historyList::item { padding:10px 9px; border-radius:8px; margin:1px 0; }
-            QListWidget#historyList::item:hover { background:#252b36; }
-            QListWidget#historyList::item:selected { background:#303846; color:#ffffff; }
-            QPushButton#deleteChat { background:transparent; color:#929bad; border:1px solid #343b47; border-radius:8px; padding:8px; font-size:11px; }
-            QPushButton#deleteChat:hover { background:#34272b; color:#f0b6bd; border-color:#69434a; }
-            QLabel#privacyNote { color:#8992a2; background:#20242d; border:1px solid #2d333e; border-radius:10px; padding:12px; font-size:11px; }
-            QPushButton#newChat { background:#252a34; color:#f0f2f6; border:1px solid #3a414e; border-radius:9px; padding:12px; text-align:left; font-size:13px; }
-            QPushButton#newChat:hover { background:#343c4b; border-color:#56647b; }
-            QPushButton#newChat:pressed { background:#202630; }
-            QFrame#topbar { background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #151923,stop:0.55 #111318,stop:1 #171b25); border-bottom:1px solid #2a303c; }
-            QLabel#topTitle { color:#f1f2f5; font-size:15px; font-weight:600; }
-            QPushButton#iconButton { background:#202630; color:#dce3ef; border:1px solid #343d4c; border-radius:10px; font-size:17px; }
-            QPushButton#iconButton:hover { background:#303949; }
-            QPushButton#copyButton { background:#202630; color:#cbd5e4; border:1px solid #343d4c; border-radius:9px; padding:8px 11px; font-size:11px; }
-            QPushButton#copyButton:hover { background:#303949; }
-            QLabel#topSubtitle { color:#7f8999; font-size:11px; }
-            QLabel#statusBadge { color:#a8b4c7; background:#202630; border:1px solid #303947; border-radius:12px; padding:7px 11px; font-size:11px; }
-            QFrame#bottomPanel { background:#111318; }
-            QFrame#composer { background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #252c38,stop:1 #1a1f28); border:1px solid #465267; border-radius:20px; }
-            QFrame#composer:hover { border-color:#58677f; }
-            QLineEdit#messageInput { background:transparent; color:#f3f4f6; border:0; padding:9px 4px; font-size:14px; }
-            QPushButton#sendButton { background:#e9edf5; color:#171a20; border:0; border-radius:13px; font-size:23px; font-weight:600; }
-            QPushButton#sendButton:hover { background:#ffffff; }
-            QPushButton#sendButton:pressed { background:#cbd5e6; }
-            QPushButton:disabled { background:#525966; color:#aeb4bf; }
-            QLabel#footerStatus { color:#747e8e; font-size:10px; }
+            QListWidget#historyList::item:hover { background:#ececef; }
+            QListWidget#historyList::item:selected { background:#e5e5e8; color:#202123; }
+            QPushButton#deleteChat { background:transparent; color:#777b84; border:1px solid #dedfe3; border-radius:8px; padding:8px; font-size:11px; }
+            QPushButton#deleteChat:hover { background:#fbecee; color:#a33b48; border-color:#efc7cc; }
+            QLabel#privacyNote { color:#6f737c; background:#eeeeef; border:1px solid #e3e3e5; border-radius:10px; padding:12px; font-size:11px; }
+            QPushButton#newChat { background:#ffffff; color:#252629; border:1px solid #dedfe3; border-radius:9px; padding:12px; text-align:left; font-size:13px; }
+            QPushButton#newChat:hover { background:#f0f0f2; border-color:#c8cbd1; }
+            QPushButton#newChat:pressed { background:#e8e8eb; }
+            QFrame#topbar { background:#ffffff; border-bottom:1px solid #ececef; }
+            QLabel#topTitle { color:#202123; font-size:15px; font-weight:600; }
+            QPushButton#iconButton { background:#ffffff; color:#44464b; border:1px solid #e1e2e5; border-radius:10px; font-size:17px; }
+            QPushButton#iconButton:hover { background:#f2f2f4; }
+            QPushButton#copyButton { background:#ffffff; color:#44464b; border:1px solid #e1e2e5; border-radius:9px; padding:8px 11px; font-size:11px; }
+            QPushButton#copyButton:hover { background:#f2f2f4; }
+            QLabel#topSubtitle { color:#858891; font-size:11px; }
+            QLabel#statusBadge { color:#5f636b; background:#f4f4f5; border:1px solid #e7e7e9; border-radius:12px; padding:7px 11px; font-size:11px; }
+            QFrame#bottomPanel { background:#ffffff; }
+            QFrame#composer { background:#ffffff; border:1px solid #d9dade; border-radius:20px; }
+            QFrame#composer:hover { border-color:#b8bbc2; }
+            QLineEdit#messageInput { background:transparent; color:#202123; border:0; padding:9px 4px; font-size:14px; }
+            QLineEdit#messageInput::placeholder { color:#9699a1; }
+            QPushButton#sendButton { background:#202123; color:#ffffff; border:0; border-radius:13px; font-size:23px; font-weight:600; }
+            QPushButton#sendButton:hover { background:#3b3d41; }
+            QPushButton#sendButton:pressed { background:#55575c; }
+            QPushButton:disabled { background:#e3e4e7; color:#92959d; }
+            QLabel#footerStatus { color:#858891; font-size:10px; }
+            QLineEdit { background:#ffffff; color:#202123; selection-background-color:#d9e5f7; border:1px solid #dedfe3; border-radius:8px; padding:8px; }
+            QPlainTextEdit { background:#ffffff; color:#202123; border:1px solid #dedfe3; border-radius:8px; }
         """)
 
     def _log(self, level: str, message: str):
@@ -563,9 +567,9 @@ class AmanWindow(QMainWindow):
         message = re.sub(r"</?think>", "", message, flags=re.I).strip()
         safe = html.escape(message).replace("\n", "<br>")
         if speaker == "You":
-            block = f"<div class='row'><div class='who'>You</div><div class='user'>{safe}</div></div>"
+            block = f"<div class='row row-user'><div class='who'>You</div><div class='user'>{safe}</div></div>"
         else:
-            block = f"<div class='row'><div class='who'>✦ &nbsp; Aman</div><div class='assistant'>{safe}</div></div>"
+            block = f"<div class='row row-assistant'><div class='who'>✦ &nbsp; Aman</div><div class='assistant'>{safe}</div></div>"
         cursor = self.chat.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.insertHtml(block)
@@ -716,7 +720,7 @@ class AmanWindow(QMainWindow):
     def _begin_streamed_reply(self):
         cursor = self.chat.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertHtml("<div class='row'><div class='who'>✦ &nbsp; Aman</div><div class='assistant'>")
+        cursor.insertHtml("<div class='row row-assistant'><div class='who'>✦ &nbsp; Aman</div><div class='assistant'>")
         self._stream_cursor = cursor
         self._stream_raw = ""
         self._stream_displayed = 0
