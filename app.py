@@ -229,23 +229,12 @@ class AmanWindow(QMainWindow):
         bottom.setObjectName("bottomPanel")
         bottom.setMinimumHeight(112)
         bottom_layout = QVBoxLayout(bottom)
-        bottom_layout.setContentsMargins(0, 12, 0, 18)
+        bottom_layout.setContentsMargins(28, 12, 28, 18)
         bottom_layout.setSpacing(8)
-
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setObjectName("modelProgress")
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("Preparing model · %p%")
-        self.progress_bar.setMaximumWidth(760)
-        self.progress_bar.setFixedHeight(8)
-        self.progress_bar.hide()
-        bottom_layout.addWidget(self.progress_bar, 0, Qt.AlignmentFlag.AlignHCenter)
 
         composer_frame = QFrame()
         composer_frame.setObjectName("composer")
-        composer_frame.setMaximumWidth(800)
+        composer_frame.setMaximumWidth(16777215)
         composer_frame.setFixedHeight(66)
         composer_shadow = QGraphicsDropShadowEffect(composer_frame)
         composer_shadow.setBlurRadius(30)
@@ -269,7 +258,7 @@ class AmanWindow(QMainWindow):
         self.send_button.clicked.connect(self.send_message)
         composer.addWidget(self.message_input, 1)
         composer.addWidget(self.send_button)
-        bottom_layout.addWidget(composer_frame, 0, Qt.AlignmentFlag.AlignHCenter)
+        bottom_layout.addWidget(composer_frame)
         composer_frame.setVisible(True)
         self.message_input.setVisible(True)
         self.send_button.setVisible(True)
@@ -322,8 +311,6 @@ class AmanWindow(QMainWindow):
             QPushButton#sendButton:pressed { background:#cbd5e6; }
             QPushButton:disabled { background:#525966; color:#aeb4bf; }
             QLabel#footerStatus { color:#747e8e; font-size:10px; }
-            QProgressBar#modelProgress { background:#292f3a; border:0; border-radius:4px; }
-            QProgressBar#modelProgress::chunk { background:#8da9e8; border-radius:4px; }
         """)
 
     def _log(self, level: str, message: str):
@@ -440,33 +427,15 @@ class AmanWindow(QMainWindow):
         match = re.search(r"Downloading model:\\s*(\\d{1,3})%", message)
         if match:
             value = min(100, int(match.group(1)))
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(value)
-            self.progress_bar.setFormat(f"Downloading model · {value}%")
-            self.progress_bar.show()
             self.ready_badge.setText("●  Downloading")
         elif "Downloading the pinned" in message:
-            self.progress_bar.setRange(0, 0)
-            self.progress_bar.setFormat("Starting model download…")
-            self.progress_bar.show()
             self.ready_badge.setText("●  Preparing")
         elif "Verifying" in message:
-            self.progress_bar.setRange(0, 0)
-            self.progress_bar.setFormat("Verifying model…")
-            self.progress_bar.show()
             self.ready_badge.setText("●  Verifying")
         elif "Local AI ready ·" in message:
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(100)
-            self.progress_bar.setFormat("Performance test complete")
-            self.progress_bar.show()
             mode = message.split("Local AI ready ·", 1)[1].split("·", 1)[0].strip()
             self.ready_badge.setText(f"●  {mode}")
         elif "downloaded and verified" in message or "ready" in message.lower():
-            self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(100)
-            self.progress_bar.setFormat("Model ready")
-            self.progress_bar.show()
             self.ready_badge.setText("●  Ready")
 
     def _append(self, speaker: str, message: str):
@@ -672,7 +641,6 @@ class AmanWindow(QMainWindow):
         self._stop_thinking()
         self._set_status("Something went wrong. Please try again.")
         self.ready_badge.setText("●  Needs attention")
-        self.progress_bar.hide()
         QMessageBox.critical(self, "Aman", message)
 
     def _worker_finished(self):
