@@ -15,6 +15,7 @@ class AmanEngine:
         self.process: subprocess.Popen | None = None
         self.port = int(os.getenv("AMAN_LLAMA_PORT", "1235"))
         self.base_url = f"http://127.0.0.1:{self.port}/v1"
+        self.acceleration = "Not started"
 
     @property
     def is_ready(self) -> bool:
@@ -30,13 +31,50 @@ class AmanEngine:
             return matches[0]
         return direct
 
+    def _wait_until_healthy(self, timeout: int = 180) -> bool:
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if self.process is None or self.process.poll() is not None:
+                return False
+            try:
+                with urllib.request.urlopen(
+                    f"http://127.0.0.1:{self.port}/health", timeout=1
+                ):
+                    return True
+            except (urllib.error.URLError, TimeoutError, OSError):
+                time.sleep(0.5)
+        return False
+
+    def _launch(self, executable: Path, model_path: Path, gpu_layers: int, report):
+        command = [
+            str(executable), "--model", str(model_path),
+            "--host", "127.0.0.1", "--port", str(self.port),
+            "--ctx-size", os.getenv("AMAN_CONTEXT_SIZE", "4096"),
+            "--parallel", "1", "--reasoning-format", "none",
+            "--n-gpu-layers", str(gpu_layers),
+        ]
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        self.process = subprocess.Popen(
+            command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL, creationflags=creationflags,
+        )
+        if self._wait_until_healthy():
+            return True
+        if self.process and self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=3)
+        self.process = None
+        return False
+
     def start(self, model_path: Path, progress=None):
         report = progress or (lambda _: None)
         executable = self._runtime_path()
         if not executable.is_file():
-            raise RuntimeError(
-                "Aman could not find llama-server.exe. Use the Install CPU runtime button and try again."
-            )
+            raise RuntimeError("Aman could not find llama-server.exe in its local runtime.")
         if not model_path.is_file():
             raise RuntimeError(f"The model file does not exist: {model_path}")
         if self.process and self.process.poll() is None:
@@ -51,37 +89,21 @@ class AmanEngine:
                 "or set AMAN_LLAMA_PORT to a free port."
             ) from exc
 
-        command = [
-            str(executable), "--model", str(model_path),
-            "--host", "127.0.0.1", "--port", str(self.port),
-            "--ctx-size", os.getenv("AMAN_CONTEXT_SIZE", "4096"),
-            "--parallel", "1", "--reasoning-format", "none",
-        ]
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-        report("Starting llama.cpp and loading the local model…")
-        self.process = subprocess.Popen(
-            command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, creationflags=creationflags,
+        report("Starting local model with Intel-compatible Vulkan GPU acceleration…")
+        if self._launch(executable, model_path, 99, report):
+            self.acceleration = "Vulkan GPU"
+            report("Local AI ready · Vulkan GPU acceleration enabled.")
+            return
+
+        report("GPU acceleration is unavailable. Retrying safely on CPU…")
+        if self._launch(executable, model_path, 0, report):
+            self.acceleration = "CPU fallback"
+            report("Local AI ready · CPU fallback.")
+            return
+        raise RuntimeError(
+            "Aman could not start the model with GPU acceleration or CPU fallback. "
+            "Check that the Intel graphics driver is up to date and that enough memory is available."
         )
-
-        deadline = time.monotonic() + 180
-        while time.monotonic() < deadline:
-            if self.process.poll() is not None:
-                raise RuntimeError(
-                    "llama-server.exe exited during startup. Check the runtime build, "
-                    "model, and available memory."
-                )
-            try:
-                with urllib.request.urlopen(
-                    f"http://127.0.0.1:{self.port}/health", timeout=1
-                ):
-                    report("Local AI server is healthy.")
-                    return
-            except (urllib.error.URLError, TimeoutError, OSError):
-                time.sleep(0.5)
-
-        self.stop()
-        raise RuntimeError("Timed out while loading the local model.")
 
     def chat(self, system_prompt: str, history: list[dict[str, str]]) -> str:
         payload = {
