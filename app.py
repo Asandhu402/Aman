@@ -638,6 +638,7 @@ class AmanWindow(QMainWindow):
             report("Checking the model and local runtime…")
             model_path = self.model_manager.ensure_model(report)
             self.runtime_manager.ensure_runtime(report)
+            report("Checking for Intel AI Boost NPU…")
             if self.runtime_manager.has_intel_npu():
                 try:
                     self.runtime_manager.ensure_openvino_runtime(report)
