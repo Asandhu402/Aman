@@ -3,8 +3,11 @@ from __future__ import annotations
 import hashlib
 import os
 import shutil
+import ssl
 import tempfile
 import urllib.request
+
+import certifi
 from pathlib import Path
 from typing import Callable
 
@@ -64,7 +67,8 @@ class ModelManager:
             report("Downloading the pinned 2.71 GB model…")
             digest = hashlib.sha256()
             downloaded = 0
-            with urllib.request.urlopen(request, timeout=60) as response:
+            context = ssl.create_default_context(cafile=certifi.where())
+            with urllib.request.urlopen(request, context=context, timeout=60) as response:
                 total = int(response.headers.get("Content-Length", "0") or 0)
                 if total < 0 or total > MAX_DOWNLOAD_BYTES:
                     raise RuntimeError("The model server reported an invalid download size.")
