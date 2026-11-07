@@ -16,6 +16,8 @@ class AmanEngine:
         self.port = int(os.getenv("AMAN_LLAMA_PORT", "1235"))
         self.base_url = f"http://127.0.0.1:{self.port}/v1"
         self.acceleration = "Not started"
+        self.generation_speed = 0.0
+        self.selected_threads: int | None = None
 
     @property
     def is_ready(self) -> bool:
@@ -45,7 +47,10 @@ class AmanEngine:
                 time.sleep(0.5)
         return False
 
-    def _launch(self, executable: Path, model_path: Path, gpu_layers: int, report):
+    def _launch(
+        self, executable: Path, model_path: Path, gpu_layers: int,
+        report, threads: int | None = None,
+    ) -> bool:
         command = [
             str(executable), "--model", str(model_path),
             "--host", "127.0.0.1", "--port", str(self.port),
@@ -53,6 +58,8 @@ class AmanEngine:
             "--parallel", "1", "--reasoning-format", "none",
             "--n-gpu-layers", str(gpu_layers),
         ]
+        if threads is not None:
+            command.extend(["--threads", str(threads), "--threads-batch", str(threads)])
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
         self.process = subprocess.Popen(
             command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
@@ -60,15 +67,35 @@ class AmanEngine:
         )
         if self._wait_until_healthy():
             return True
-        if self.process and self.process.poll() is None:
-            self.process.terminate()
-            try:
-                self.process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self.process.kill()
-                self.process.wait(timeout=3)
-        self.process = None
+        self.stop()
         return False
+
+    def _benchmark(self) -> float:
+        payload = {
+            "model": "local-model",
+            "messages": [
+                {"role": "system", "content": "You are a concise assistant."},
+                {"role": "user", "content": "Write a short paragraph about why clean energy matters."},
+            ],
+            "temperature": 0,
+            "max_tokens": 64,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        request = urllib.request.Request(
+            f"{self.base_url}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            method="POST",
+        )
+        started = time.perf_counter()
+        with urllib.request.urlopen(request, timeout=180) as response:
+            result = json.loads(response.read().decode("utf-8"))
+        elapsed = max(time.perf_counter() - started, 0.001)
+        usage = result.get("usage", {})
+        tokens = usage.get("completion_tokens", 0)
+        if not tokens:
+            raise RuntimeError("The local server did not report benchmark token usage.")
+        return tokens / elapsed
 
     def start(self, model_path: Path, progress=None):
         report = progress or (lambda _: None)
@@ -89,21 +116,43 @@ class AmanEngine:
                 "or set AMAN_LLAMA_PORT to a free port."
             ) from exc
 
-        report("Starting local model with Intel-compatible Vulkan GPU acceleration…")
-        if self._launch(executable, model_path, 99, report):
-            self.acceleration = "Vulkan GPU"
-            report("Local AI ready · Vulkan GPU acceleration enabled.")
-            return
+        # Benchmark the GPU first, then several sensible CPU thread counts.
+        # The final selection is based on measured generation tokens/second.
+        candidates = [
+            ("Vulkan GPU", 99, None),
+            ("CPU · 8 threads", 0, 8),
+            ("CPU · 10 threads", 0, 10),
+            ("CPU · 12 threads", 0, 12),
+        ]
+        results: list[tuple[float, str, int, int | None]] = []
+        for label, gpu_layers, threads in candidates:
+            report(f"Benchmarking {label}… first launch can take a little while.")
+            if not self._launch(executable, model_path, gpu_layers, report, threads):
+                report(f"{label} could not start; skipping this option.")
+                continue
+            try:
+                speed = self._benchmark()
+                results.append((speed, label, gpu_layers, threads))
+                report(f"{label}: {speed:.1f} tokens/second.")
+            except Exception as exc:
+                report(f"{label} benchmark failed: {exc}")
+            finally:
+                self.stop()
 
-        report("GPU acceleration is unavailable. Retrying safely on CPU…")
-        if self._launch(executable, model_path, 0, report):
-            self.acceleration = "CPU fallback"
-            report("Local AI ready · CPU fallback.")
-            return
-        raise RuntimeError(
-            "Aman could not start the model with GPU acceleration or CPU fallback. "
-            "Check that the Intel graphics driver is up to date and that enough memory is available."
-        )
+        if not results:
+            raise RuntimeError(
+                "Aman could not benchmark either Intel Vulkan or CPU inference. "
+                "Check the Intel graphics driver and available memory."
+            )
+
+        speed, label, gpu_layers, threads = max(results, key=lambda item: item[0])
+        report(f"Fastest tested mode: {label} at {speed:.1f} tokens/second. Starting it…")
+        if not self._launch(executable, model_path, gpu_layers, report, threads):
+            raise RuntimeError(f"Aman benchmarked {label} successfully but could not restart it.")
+        self.acceleration = label
+        self.generation_speed = speed
+        self.selected_threads = threads
+        report(f"Local AI ready · {label} · benchmark {speed:.1f} tokens/second.")
 
     def chat(self, system_prompt: str, history: list[dict[str, str]]) -> str:
         payload = {
