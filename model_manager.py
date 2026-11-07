@@ -36,8 +36,43 @@ class ModelManager:
                 digest.update(chunk)
         return digest.hexdigest()
 
+    @property
+    def verification_marker(self) -> Path:
+        return self.model_dir / ".model-verified.json"
+
+    def _write_verification_marker(self, path: Path) -> None:
+        try:
+            stat = path.stat()
+            marker = {
+                "sha256": MODEL_SHA256,
+                "size": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+            }
+            temporary = self.verification_marker.with_suffix(".tmp")
+            temporary.write_text(json.dumps(marker), encoding="utf-8")
+            os.replace(temporary, self.verification_marker)
+        except OSError:
+            # A future launch can safely hash the file again if marker creation fails.
+            pass
+
     def verify(self, path: Path) -> bool:
-        return path.is_file() and self.sha256(path).lower() == MODEL_SHA256
+        if not path.is_file():
+            return False
+        stat = path.stat()
+        try:
+            marker = json.loads(self.verification_marker.read_text(encoding="utf-8"))
+            if (
+                marker.get("sha256") == MODEL_SHA256
+                and marker.get("size") == stat.st_size
+                and marker.get("mtime_ns") == stat.st_mtime_ns
+            ):
+                return True
+        except (OSError, ValueError, TypeError):
+            pass
+        valid = self.sha256(path).lower() == MODEL_SHA256
+        if valid:
+            self._write_verification_marker(path)
+        return valid
 
     def ensure_model(self, progress: Callable[[str], None] | None = None) -> Path:
         report = progress or (lambda _: None)
@@ -89,6 +124,7 @@ class ModelManager:
             if self.model_path.exists():
                 raise RuntimeError("The destination appeared during download; it was not overwritten.")
             os.replace(partial, self.model_path)
+            self._write_verification_marker(self.model_path)
             report("Model downloaded and verified.")
             return self.model_path
         except Exception:
