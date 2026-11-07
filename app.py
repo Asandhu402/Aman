@@ -474,9 +474,54 @@ class AmanWindow(QMainWindow):
             self.engine.start(model_path, report)
         self._run_worker(start, "Aman's local model is ready.")
 
+    def _try_open_website(self, prompt: str) -> bool:
+        # Handle explicit navigation requests locally; no model or internet
+        # access is needed to open a site in the user's default browser.
+        match = re.fullmatch(
+            r"\\s*(?:please\\s+)?(?:go\\s+to|open|visit|navigate\\s+to)\\s+"
+            r"((?:https?://)?(?:www\\.)?[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?"
+            r"\\.[a-zA-Z]{2,}(?::[0-9]{1,5})?(?:/[^\\s]*)?)\\s*[.!]?\\s*",
+            prompt,
+            flags=re.I,
+        )
+        if not match:
+            return False
+        address = match.group(1)
+        if not address.lower().startswith(("http://", "https://")):
+            address = "https://" + address
+        url = QUrl(address)
+        if not url.isValid() or not url.host() or url.scheme() not in ("http", "https"):
+            return False
+
+        self.message_input.clear()
+        if not self.history:
+            self.chat.clear()
+        self._append("You", prompt)
+        self.history.append({"role": "user", "content": prompt})
+        if self.active_conversation_id is None:
+            self.active_conversation_id = self.conversation_store.create_conversation(prompt)
+        self.conversation_store.add_message(self.active_conversation_id, "user", prompt)
+        opened = QDesktopServices.openUrl(url)
+        reply = (
+            f"Opening {url.toString()} in your default browser."
+            if opened else
+            f"I couldn't open {url.toString()}. Please check your default browser settings."
+        )
+        self._append("Aman", reply)
+        self.history.append({"role": "assistant", "content": reply})
+        self.conversation_store.add_message(self.active_conversation_id, "assistant", reply)
+        self.refresh_history_list(select_id=self.active_conversation_id)
+        self._last_answer = reply
+        self.copy_button.show()
+        self._set_status("Website opened in your default browser." if opened else "Could not open website.")
+        self._log("INFO", f"Browser navigation requested: {url.toString()} (opened={opened})")
+        return True
+
     def send_message(self):
         prompt = self.message_input.text().strip()
         if not prompt:
+            return
+        if self._try_open_website(prompt):
             return
         if not self.engine.is_ready:
             self._log("WARNING", "Chat send attempted before local engine was ready")
