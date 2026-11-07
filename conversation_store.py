@@ -13,6 +13,8 @@ class ConversationStore:
         folder.mkdir(parents=True, exist_ok=True)
         self.path = folder / "conversations.sqlite3"
         with self._db() as db:
+            db.execute("PRAGMA journal_mode=WAL")
+            db.execute("PRAGMA synchronous=NORMAL")
             db.execute("CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, title TEXT NOT NULL, updated_at TEXT NOT NULL)")
             db.execute("CREATE TABLE IF NOT EXISTS messages (id INTEGER PRIMARY KEY AUTOINCREMENT, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE)")
             db.execute("CREATE INDEX IF NOT EXISTS messages_by_chat ON messages(conversation_id, id)")
@@ -20,6 +22,8 @@ class ConversationStore:
         db = sqlite3.connect(self.path)
         db.row_factory = sqlite3.Row
         db.execute("PRAGMA foreign_keys=ON")
+        db.execute("PRAGMA busy_timeout=3000")
+        db.execute("PRAGMA synchronous=NORMAL")
         return db
     def _now(self):
         return datetime.now(timezone.utc).isoformat(timespec="seconds")
