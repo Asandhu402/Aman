@@ -21,15 +21,21 @@ class AmanEngine:
         return self.process is not None and self.process.poll() is None
 
     def _runtime_path(self) -> Path:
-        return Path(__file__).resolve().parent / "runtime" / "llama-server.exe"
+        runtime_dir = Path(__file__).resolve().parent / "runtime"
+        direct = runtime_dir / "llama-server.exe"
+        if direct.is_file():
+            return direct
+        matches = list(runtime_dir.rglob("llama-server.exe")) if runtime_dir.exists() else []
+        if len(matches) == 1:
+            return matches[0]
+        return direct
 
     def start(self, model_path: Path, progress=None):
         report = progress or (lambda _: None)
         executable = self._runtime_path()
         if not executable.is_file():
             raise RuntimeError(
-                "Aman could not find runtime\\llama-server.exe. "
-                "Add a trusted Windows CPU build of llama.cpp there, then try again."
+                "Aman could not find llama-server.exe. Use the Install CPU runtime button and try again."
             )
         if not model_path.is_file():
             raise RuntimeError(f"The model file does not exist: {model_path}")
