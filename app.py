@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+import html
 import re
 import sys
 
-from PySide6.QtCore import QThread, Signal, QTimer
-from PySide6.QtGui import QFont
+from PySide6.QtCore import QThread, Signal, QTimer, Qt
+from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
-    QApplication, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QProgressBar, QPushButton, QTextEdit, QVBoxLayout, QWidget,
+    QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
+    QMessageBox, QProgressBar, QPushButton, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from local_engine import AmanEngine
@@ -46,110 +47,224 @@ class AmanWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Aman")
-        self.resize(980, 720)
+        self.resize(1180, 780)
+        self.setMinimumSize(820, 600)
         self.engine = AmanEngine()
         self.model_manager = ModelManager()
         self.runtime_manager = RuntimeManager()
         self.history: list[dict[str, str]] = []
         self.worker = None
         self._build_ui()
-        self._set_status("Preparing Aman…")
+        self._set_status("Preparing your private local assistant…")
 
     def _build_ui(self):
         root = QWidget()
-        layout = QVBoxLayout(root)
-        layout.setContentsMargins(22, 18, 22, 18)
-        layout.setSpacing(12)
+        root.setObjectName("root")
+        outer = QHBoxLayout(root)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
 
-        header = QHBoxLayout()
-        title_box = QVBoxLayout()
-        title = QLabel("Aman")
-        title.setFont(QFont("Segoe UI", 23, QFont.Weight.Bold))
-        subtitle = QLabel("One agent · Local AI · Private by design")
-        subtitle.setStyleSheet("color: #888;")
-        title_box.addWidget(title)
-        title_box.addWidget(subtitle)
-        header.addLayout(title_box)
-        header.addStretch(1)
-        layout.addLayout(header)
+        # ChatGPT-inspired compact navigation rail.
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(238)
+        side = QVBoxLayout(sidebar)
+        side.setContentsMargins(16, 22, 16, 18)
+        side.setSpacing(14)
 
-        self.chat = QTextEdit()
-        self.chat.setReadOnly(True)
-        self.chat.setAcceptRichText(False)
-        self.chat.setPlaceholderText("Your conversation with Aman will appear here.")
-        self.chat.setStyleSheet(
-            "QTextEdit { background: #17191d; color: #e9e9e9; border: 1px solid #343840; "
-            "border-radius: 12px; padding: 16px; font-size: 14px; }"
+        brand = QHBoxLayout()
+        mark = QLabel("A")
+        mark.setObjectName("brandMark")
+        mark.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        mark.setFixedSize(36, 36)
+        brand_name = QLabel("Aman")
+        brand_name.setObjectName("brandName")
+        brand.addWidget(mark)
+        brand.addWidget(brand_name)
+        brand.addStretch(1)
+        side.addLayout(brand)
+
+        self.new_chat_button = QPushButton("+   New chat")
+        self.new_chat_button.setObjectName("newChat")
+        self.new_chat_button.clicked.connect(self.new_chat)
+        side.addWidget(self.new_chat_button)
+
+        section = QLabel("YOUR SPACE")
+        section.setObjectName("sectionLabel")
+        side.addWidget(section)
+
+        current = QLabel("●   Current conversation")
+        current.setObjectName("currentConversation")
+        side.addWidget(current)
+        side.addStretch(1)
+
+        privacy = QLabel("◉  Runs locally on this device\n\nYour conversations stay on your computer.")
+        privacy.setObjectName("privacyNote")
+        privacy.setWordWrap(True)
+        side.addWidget(privacy)
+        outer.addWidget(sidebar)
+
+        # Main conversation area.
+        main = QWidget()
+        main.setObjectName("mainArea")
+        main_layout = QVBoxLayout(main)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        topbar = QFrame()
+        topbar.setObjectName("topbar")
+        top_layout = QHBoxLayout(topbar)
+        top_layout.setContentsMargins(30, 18, 30, 18)
+        heading = QVBoxLayout()
+        title = QLabel("New conversation")
+        title.setObjectName("topTitle")
+        subtitle = QLabel("A private space to think, explore and create")
+        subtitle.setObjectName("topSubtitle")
+        heading.addWidget(title)
+        heading.addWidget(subtitle)
+        top_layout.addLayout(heading)
+        top_layout.addStretch(1)
+        self.ready_badge = QLabel("●  Starting")
+        self.ready_badge.setObjectName("statusBadge")
+        top_layout.addWidget(self.ready_badge)
+        main_layout.addWidget(topbar)
+
+        self.chat = QTextBrowser()
+        self.chat.setObjectName("conversation")
+        self.chat.setOpenExternalLinks(True)
+        self.chat.setFrameShape(QFrame.Shape.NoFrame)
+        self.chat.setViewportMargins(0, 0, 0, 0)
+        self.chat.document().setDefaultStyleSheet(
+            "body { color:#e8eaf0; font-family:'Segoe UI'; font-size:14px; } "
+            ".welcome { text-align:center; color:#f2f3f5; font-size:27px; font-weight:600; margin-top:100px; } "
+            ".hint { text-align:center; color:#9299a7; font-size:14px; margin-top:12px; } "
+            ".row { margin:20px auto; max-width:760px; } "
+            ".who { color:#9ca6b8; font-size:12px; font-weight:600; margin-bottom:8px; } "
+            ".user { background:#252a35; border:1px solid #343b49; border-radius:15px; padding:13px 16px; color:#f4f5f7; } "
+            ".assistant { color:#e8eaf0; padding:4px 2px 14px 2px; line-height:1.65; } "
         )
-        layout.addWidget(self.chat, 1)
+        self.chat.setHtml(
+            "<div class='welcome'>What would you like to explore?</div>"
+            "<div class='hint'>Ask Aman anything. Your AI runs right here on your computer.</div>"
+        )
+        self.chat.setStyleSheet(
+            "QTextBrowser { background:#111318; color:#e8eaf0; border:0; padding:20px 8%; }"
+        )
+        main_layout.addWidget(self.chat, 1)
 
-        composer = QHBoxLayout()
-        self.message_input = QLineEdit()
-        self.message_input.setPlaceholderText("Message Aman…")
-        self.message_input.returnPressed.connect(self.send_message)
-        self.send_button = QPushButton("Send")
-        self.send_button.setObjectName("primary")
-        composer.addWidget(self.message_input, 1)
-        composer.addWidget(self.send_button)
-        layout.addLayout(composer)
-
-        self.status = QLabel()
-        self.status.setStyleSheet("color: #aaa; padding: 4px;")
-        layout.addWidget(self.status)
+        bottom = QFrame()
+        bottom.setObjectName("bottomPanel")
+        bottom_layout = QVBoxLayout(bottom)
+        bottom_layout.setContentsMargins(0, 12, 0, 18)
+        bottom_layout.setSpacing(8)
 
         self.progress_bar = QProgressBar()
+        self.progress_bar.setObjectName("modelProgress")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.progress_bar.setTextVisible(True)
-        self.progress_bar.setFormat("%p%")
-        self.progress_bar.setStyleSheet(
-            "QProgressBar { background: #242830; color: white; border: 0; "
-            "border-radius: 5px; height: 12px; text-align: center; } "
-            "QProgressBar::chunk { background: #3769d6; border-radius: 5px; }"
-        )
+        self.progress_bar.setFormat("Preparing model · %p%")
+        self.progress_bar.setMaximumWidth(760)
+        self.progress_bar.setFixedHeight(8)
         self.progress_bar.hide()
-        layout.addWidget(self.progress_bar)
+        bottom_layout.addWidget(self.progress_bar, 0, Qt.AlignmentFlag.AlignHCenter)
 
+        composer_frame = QFrame()
+        composer_frame.setObjectName("composer")
+        composer_frame.setMaximumWidth(800)
+        composer = QHBoxLayout(composer_frame)
+        composer.setContentsMargins(16, 9, 9, 9)
+        composer.setSpacing(10)
+        self.message_input = QLineEdit()
+        self.message_input.setObjectName("messageInput")
+        self.message_input.setPlaceholderText("Message Aman…")
+        self.message_input.returnPressed.connect(self.send_message)
+        self.send_button = QPushButton("↑")
+        self.send_button.setObjectName("sendButton")
+        self.send_button.setFixedSize(42, 42)
+        self.send_button.setToolTip("Send message")
         self.send_button.clicked.connect(self.send_message)
+        composer.addWidget(self.message_input, 1)
+        composer.addWidget(self.send_button)
+        bottom_layout.addWidget(composer_frame, 0, Qt.AlignmentFlag.AlignHCenter)
+
+        self.status = QLabel("Starting local AI…")
+        self.status.setObjectName("footerStatus")
+        self.status.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        bottom_layout.addWidget(self.status)
+        main_layout.addWidget(bottom)
+
+        outer.addWidget(main, 1)
         self.setCentralWidget(root)
-        self.setStyleSheet(
-            "QMainWindow { background: #101216; } "
-            "QLabel { color: #ededed; } "
-            "QPushButton { background: #30343c; color: white; border: 0; "
-            "border-radius: 8px; padding: 10px 15px; } "
-            "QPushButton#primary { background: #3769d6; } "
-            "QPushButton:disabled { background: #555; color: #aaa; } "
-            "QLineEdit { background: #1c1f25; color: white; border: 1px solid #3a3f49; "
-            "border-radius: 9px; padding: 12px; font-size: 14px; }"
-        )
+        self.setStyleSheet("""
+            QMainWindow, QWidget#root { background:#111318; }
+            QFrame#sidebar { background:#191c23; border-right:1px solid #292e38; }
+            QLabel#brandMark { background:#e8edf7; color:#171a20; border-radius:11px; font-size:20px; font-weight:700; }
+            QLabel#brandName { color:#f4f5f7; font-size:19px; font-weight:650; }
+            QLabel#sectionLabel { color:#737d8e; font-size:10px; font-weight:700; letter-spacing:1px; margin-top:20px; }
+            QLabel#currentConversation { color:#e7eaf0; background:#292e39; border-radius:8px; padding:11px 9px; font-size:12px; }
+            QLabel#privacyNote { color:#8992a2; background:#20242d; border:1px solid #2d333e; border-radius:10px; padding:12px; font-size:11px; }
+            QPushButton#newChat { background:#252a34; color:#f0f2f6; border:1px solid #3a414e; border-radius:9px; padding:12px; text-align:left; font-size:13px; }
+            QPushButton#newChat:hover { background:#303744; }
+            QFrame#topbar { background:#111318; border-bottom:1px solid #252a33; }
+            QLabel#topTitle { color:#f1f2f5; font-size:15px; font-weight:600; }
+            QLabel#topSubtitle { color:#7f8999; font-size:11px; }
+            QLabel#statusBadge { color:#a8b4c7; background:#202630; border:1px solid #303947; border-radius:12px; padding:7px 11px; font-size:11px; }
+            QFrame#bottomPanel { background:#111318; }
+            QFrame#composer { background:#1c2028; border:1px solid #3a414d; border-radius:18px; }
+            QLineEdit#messageInput { background:transparent; color:#f3f4f6; border:0; padding:9px 4px; font-size:14px; }
+            QPushButton#sendButton { background:#e9edf5; color:#171a20; border:0; border-radius:13px; font-size:23px; font-weight:600; }
+            QPushButton#sendButton:hover { background:#ffffff; }
+            QPushButton:disabled { background:#525966; color:#aeb4bf; }
+            QLabel#footerStatus { color:#747e8e; font-size:10px; }
+            QProgressBar#modelProgress { background:#292f3a; border:0; border-radius:4px; }
+            QProgressBar#modelProgress::chunk { background:#8da9e8; border-radius:4px; }
+        """)
 
     def _set_status(self, message: str):
         self.status.setText(message)
 
     def _handle_progress(self, message: str):
         self._set_status(message)
-        match = re.search(r"Downloading model:\s*(\d{1,3})%", message)
+        match = re.search(r"Downloading model:\\s*(\\d{1,3})%", message)
         if match:
+            value = min(100, int(match.group(1)))
             self.progress_bar.setRange(0, 100)
-            self.progress_bar.setValue(min(100, int(match.group(1))))
-            self.progress_bar.setFormat(f"Model download · {min(100, int(match.group(1)))}%")
+            self.progress_bar.setValue(value)
+            self.progress_bar.setFormat(f"Downloading model · {value}%")
             self.progress_bar.show()
+            self.ready_badge.setText("●  Downloading")
         elif "Downloading the pinned" in message:
             self.progress_bar.setRange(0, 0)
             self.progress_bar.setFormat("Starting model download…")
             self.progress_bar.show()
+            self.ready_badge.setText("●  Preparing")
         elif "Verifying" in message:
             self.progress_bar.setRange(0, 0)
             self.progress_bar.setFormat("Verifying model…")
             self.progress_bar.show()
+            self.ready_badge.setText("●  Verifying")
         elif "downloaded and verified" in message or "ready" in message.lower():
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(100)
-            self.progress_bar.setFormat("Complete")
+            self.progress_bar.setFormat("Model ready")
             self.progress_bar.show()
+            self.ready_badge.setText("●  Ready")
 
     def _append(self, speaker: str, message: str):
-        self.chat.append(f"{speaker}\n{message}\n")
+        # Never show hidden reasoning blocks in the conversation UI.
+        message = re.sub(r"<think>.*?</think>", "", message, flags=re.I | re.S).strip()
+        message = re.sub(r"</?think>", "", message, flags=re.I).strip()
+        safe = html.escape(message).replace("\n", "<br>")
+        if speaker == "You":
+            block = f"<div class='row'><div class='who'>You</div><div class='user'>{safe}</div></div>"
+        else:
+            block = f"<div class='row'><div class='who'>✦ &nbsp; Aman</div><div class='assistant'>{safe}</div></div>"
+        cursor = self.chat.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertHtml(block)
+        cursor.insertBlock()
+        self.chat.setTextCursor(cursor)
         self.chat.ensureCursorVisible()
 
     def _run_worker(self, task, success_message: str):
@@ -165,7 +280,7 @@ class AmanWindow(QMainWindow):
 
     def start_engine(self):
         def start(report):
-            report("Checking the pinned model and local llama.cpp runtime…")
+            report("Checking the model and local runtime…")
             model_path = self.model_manager.ensure_model(report)
             self.runtime_manager.ensure_runtime(report)
             self.engine.start(model_path, report)
@@ -176,11 +291,8 @@ class AmanWindow(QMainWindow):
         if not prompt:
             return
         if not self.engine.is_ready:
-            QMessageBox.information(
-                self, "Aman", "Aman is still preparing. You can chat as soon as setup finishes."
-            )
+            self._set_status("Aman is still getting ready. You can chat in a moment.")
             return
-
         self.message_input.clear()
         self._append("You", prompt)
         self.history.append({"role": "user", "content": prompt})
@@ -197,13 +309,28 @@ class AmanWindow(QMainWindow):
         self.worker.finished.connect(lambda: self.send_button.setEnabled(True))
         self.worker.start()
 
+    def new_chat(self):
+        if self.worker and self.worker.isRunning():
+            return
+        self.history.clear()
+        self.chat.clear()
+        self.chat.setHtml(
+            "<div class='welcome'>What would you like to explore?</div>"
+            "<div class='hint'>A fresh conversation with your local AI assistant.</div>"
+        )
+        self._set_status("New conversation")
+
     def _receive_reply(self, answer: str):
-        self.history.append({"role": "assistant", "content": answer})
-        self._append("Aman", answer)
+        clean = re.sub(r"<think>.*?</think>", "", answer, flags=re.I | re.S).strip()
+        clean = re.sub(r"</?think>", "", clean, flags=re.I).strip()
+        self.history.append({"role": "assistant", "content": clean})
+        self._append("Aman", clean)
         self._set_status("Local model ready.")
+        self.ready_badge.setText("●  Ready")
 
     def _worker_failed(self, message: str):
-        self._set_status("Task failed.")
+        self._set_status("Something went wrong. Please try again.")
+        self.ready_badge.setText("●  Needs attention")
         self.progress_bar.hide()
         QMessageBox.critical(self, "Aman", message)
 
@@ -222,6 +349,7 @@ class AmanWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Aman")
+    app.setFont(QFont("Segoe UI", 10))
     window = AmanWindow()
     window.show()
     QTimer.singleShot(0, window.start_engine)
