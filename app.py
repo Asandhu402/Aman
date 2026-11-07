@@ -718,6 +718,8 @@ class AmanWindow(QMainWindow):
             prompt,
             flags=re.I,
         ).strip()
+        if re.search(r"\\b(?:search github|github search)\\b", prompt, flags=re.I):
+            query = "github " + (query or prompt)
         return query or prompt
 
 
