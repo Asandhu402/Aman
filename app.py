@@ -151,14 +151,14 @@ class BrowserPanel(QWidget):
             const text = document.body ? document.body.innerText.slice(0, 24000) : '';
             const links = Array.from(document.querySelectorAll('a[href]'))
                 .map(a => ({
-                    label: (a.innerText || a.getAttribute('aria-label') || '').trim().replace(/\\s+/g, ' '),
+                    label: (a.innerText || a.getAttribute('aria-label') || '').trim().replace(/\s+/g, ' '),
                     url: a.href
                 }))
                 .filter(item => item.label && /^https?:/.test(item.url))
                 .filter((item, index, all) => all.findIndex(other => other.url === item.url) === index)
                 .slice(0, 15);
-            return text + '\\n\\nLINKS FOUND ON PAGE:\\n' +
-                links.map(item => item.label + ' — ' + item.url).join('\\n');
+            return text + '\n\nLINKS FOUND ON PAGE:\n' +
+                links.map(item => item.label + ' — ' + item.url).join('\n');
         })()"""
 
     def _capture_text(self, text):
