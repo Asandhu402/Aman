@@ -4,8 +4,8 @@ import html
 import re
 import sys
 
-from PySide6.QtCore import QThread, Signal, QTimer, Qt, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QFont, QKeySequence, QShortcut, QTextCursor
+from PySide6.QtCore import QThread, Signal, QTimer, Qt, QPropertyAnimation, QEasingCurve, QUrl
+from PySide6.QtGui import QDesktopServices, QFont, QKeySequence, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
     QApplication, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar,
@@ -159,7 +159,8 @@ class AmanWindow(QMainWindow):
 
         self.chat = QTextBrowser()
         self.chat.setObjectName("conversation")
-        self.chat.setOpenExternalLinks(True)
+        self.chat.setOpenExternalLinks(False)
+        self.chat.setOpenLinks(False)
         self.chat.setFrameShape(QFrame.Shape.NoFrame)
         self.chat.setViewportMargins(0, 0, 0, 0)
         self.chat.document().setDefaultStyleSheet(
@@ -305,11 +306,15 @@ class AmanWindow(QMainWindow):
         )
 
     def _welcome_link_clicked(self, url):
-        key = url.toString().replace("prompt:", "", 1)
-        prompt = self._welcome_prompts.get(key)
-        if prompt:
-            self.message_input.setText(prompt)
-            self.message_input.setFocus()
+        link = url.toString()
+        if link.startswith("prompt:"):
+            key = link.replace("prompt:", "", 1)
+            prompt = self._welcome_prompts.get(key)
+            if prompt:
+                self.message_input.setText(prompt)
+                self.message_input.setFocus()
+        elif url.scheme() in ("http", "https"):
+            QDesktopServices.openUrl(url)
 
     def toggle_sidebar(self):
         if self._sidebar_animation and self._sidebar_animation.state() == QPropertyAnimation.State.Running:
