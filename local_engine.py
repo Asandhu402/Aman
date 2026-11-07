@@ -97,6 +97,50 @@ class AmanEngine:
             raise RuntimeError("The local server did not report benchmark token usage.")
         return tokens / elapsed
 
+    def _performance_cache_path(self) -> Path:
+        base = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData/Local"))
+        folder = base / "Aman"
+        folder.mkdir(parents=True, exist_ok=True)
+        return folder / "performance.json"
+
+    def _load_cached_choice(self, executable: Path, model_path: Path):
+        cache_path = self._performance_cache_path()
+        try:
+            cache = json.loads(cache_path.read_text(encoding="utf-8"))
+            model_stat = model_path.stat()
+            runtime_stat = executable.stat()
+            if (
+                cache.get("model_path") == str(model_path.resolve())
+                and cache.get("model_size") == model_stat.st_size
+                and cache.get("model_mtime_ns") == model_stat.st_mtime_ns
+                and cache.get("runtime_mtime_ns") == runtime_stat.st_mtime_ns
+            ):
+                return (
+                    str(cache["label"]), int(cache["gpu_layers"]),
+                    cache.get("threads"), float(cache.get("speed", 0.0))
+                )
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        return None
+
+    def _save_cached_choice(self, executable: Path, model_path: Path, choice):
+        label, gpu_layers, threads, speed = choice
+        model_stat = model_path.stat()
+        runtime_stat = executable.stat()
+        payload = {
+            "model_path": str(model_path.resolve()),
+            "model_size": model_stat.st_size,
+            "model_mtime_ns": model_stat.st_mtime_ns,
+            "runtime_mtime_ns": runtime_stat.st_mtime_ns,
+            "label": label,
+            "gpu_layers": gpu_layers,
+            "threads": threads,
+            "speed": speed,
+        }
+        self._performance_cache_path().write_text(
+            json.dumps(payload, indent=2), encoding="utf-8"
+        )
+
     def start(self, model_path: Path, progress=None):
         report = progress or (lambda _: None)
         executable = self._runtime_path()
@@ -116,8 +160,19 @@ class AmanEngine:
                 "or set AMAN_LLAMA_PORT to a free port."
             ) from exc
 
-        # Benchmark the GPU first, then several sensible CPU thread counts.
-        # The final selection is based on measured generation tokens/second.
+        cached = self._load_cached_choice(executable, model_path)
+        if cached is not None:
+            label, gpu_layers, threads, speed = cached
+            report(f"Starting with your previously tested {label} settings…")
+            if self._launch(executable, model_path, gpu_layers, report, threads):
+                self.acceleration = label
+                self.generation_speed = speed
+                self.selected_threads = threads
+                report(f"Local AI ready · {label} · cached benchmark {speed:.1f} tokens/second.")
+                return
+            report("Saved performance settings did not start; testing available modes again.")
+
+        # Only benchmark after a new install or if the saved setup stops working.
         candidates = [
             ("Vulkan GPU", 99, None),
             ("CPU · 8 threads", 0, 8),
@@ -126,7 +181,7 @@ class AmanEngine:
         ]
         results: list[tuple[float, str, int, int | None]] = []
         for label, gpu_layers, threads in candidates:
-            report(f"Benchmarking {label}… first launch can take a little while.")
+            report(f"Benchmarking {label}…")
             if not self._launch(executable, model_path, gpu_layers, report, threads):
                 report(f"{label} could not start; skipping this option.")
                 continue
@@ -146,6 +201,7 @@ class AmanEngine:
             )
 
         speed, label, gpu_layers, threads = max(results, key=lambda item: item[0])
+        self._save_cached_choice(executable, model_path, (label, gpu_layers, threads, speed))
         report(f"Fastest tested mode: {label} at {speed:.1f} tokens/second. Starting it…")
         if not self._launch(executable, model_path, gpu_layers, report, threads):
             raise RuntimeError(f"Aman benchmarked {label} successfully but could not restart it.")
@@ -155,12 +211,15 @@ class AmanEngine:
         report(f"Local AI ready · {label} · benchmark {speed:.1f} tokens/second.")
 
     def chat(self, system_prompt: str, history: list[dict[str, str]]) -> str:
+        # Keep recent context bounded so every turn does not re-process an
+        # ever-growing transcript. Saved history remains complete on disk.
+        recent_history = history[-12:]
         payload = {
             "model": "local-model",
-            "messages": [{"role": "system", "content": system_prompt}, *history],
+            "messages": [{"role": "system", "content": system_prompt}, *recent_history],
             "temperature": 0.4,
             "top_p": 0.9,
-            "max_tokens": 2048,
+            "max_tokens": 1024,
             "chat_template_kwargs": {"enable_thinking": False},
         }
         request = urllib.request.Request(
