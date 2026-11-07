@@ -116,35 +116,48 @@ class AmanEngine:
         folder.mkdir(parents=True, exist_ok=True)
         return folder / "performance.json"
 
-    def _load_cached_choice(self, executable: Path, model_path: Path):
+    def _load_cached_choice(self, executable: Path, model_path: Path, npu_executable: Path | None = None):
         cache_path = self._performance_cache_path()
         try:
             cache = json.loads(cache_path.read_text(encoding="utf-8"))
             model_stat = model_path.stat()
-            runtime_stat = executable.stat()
+            selected_runtime = Path(cache.get("runtime_path", str(executable)))
+            runtime_stat = selected_runtime.stat()
+            current_npu_mtime = (
+                npu_executable.stat().st_mtime_ns
+                if npu_executable is not None and npu_executable.is_file() else None
+            )
             if (
                 cache.get("model_path") == str(model_path.resolve())
                 and cache.get("model_size") == model_stat.st_size
                 and cache.get("model_mtime_ns") == model_stat.st_mtime_ns
                 and cache.get("runtime_mtime_ns") == runtime_stat.st_mtime_ns
+                and cache.get("npu_runtime_mtime_ns") == current_npu_mtime
             ):
                 return (
                     str(cache["label"]), int(cache["gpu_layers"]),
-                    cache.get("threads"), float(cache.get("speed", 0.0))
+                    cache.get("threads"), float(cache.get("speed", 0.0)),
+                    selected_runtime,
                 )
         except (OSError, ValueError, KeyError, TypeError):
             pass
         return None
 
-    def _save_cached_choice(self, executable: Path, model_path: Path, choice):
+    def _save_cached_choice(self, executable: Path, model_path: Path, choice, npu_executable: Path | None = None):
         label, gpu_layers, threads, speed = choice
         model_stat = model_path.stat()
         runtime_stat = executable.stat()
+        npu_runtime_mtime = (
+            npu_executable.stat().st_mtime_ns
+            if npu_executable is not None and npu_executable.is_file() else None
+        )
         payload = {
             "model_path": str(model_path.resolve()),
             "model_size": model_stat.st_size,
             "model_mtime_ns": model_stat.st_mtime_ns,
+            "runtime_path": str(executable.resolve()),
             "runtime_mtime_ns": runtime_stat.st_mtime_ns,
+            "npu_runtime_mtime_ns": npu_runtime_mtime,
             "label": label,
             "gpu_layers": gpu_layers,
             "threads": threads,
@@ -173,22 +186,34 @@ class AmanEngine:
                 "or set AMAN_LLAMA_PORT to a free port."
             ) from exc
 
-        cached = self._load_cached_choice(executable, model_path)
-        if cached is not None and self._openvino_runtime_path() is None:
-            label, gpu_layers, threads, speed = cached
-            report(f"Starting with your previously tested {label} settings…")
-            if self._launch(executable, model_path, gpu_layers, report, threads):
+        openvino_executable = self._openvino_runtime_path()
+        cached = self._load_cached_choice(executable, model_path, openvino_executable)
+        if cached is not None:
+            label, gpu_layers, threads, speed, selected_runtime = cached
+            selected_env = None
+            selected_context = None
+            if label == "OpenVINO NPU":
+                selected_env = {
+                    "GGML_OPENVINO_DEVICE": "NPU",
+                    "GGML_OPENVINO_STATEFUL_EXECUTION": "0",
+                    "GGML_OPENVINO_CACHE_DIR": str(
+                        Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData/Local"))
+                        / "Aman" / "openvino-cache"
+                    ),
+                }
+                selected_context = int(os.getenv("AMAN_NPU_CONTEXT_SIZE", "2048"))
+            report(f"Starting with your previously benchmarked {label} settings…")
+            if self._launch(selected_runtime, model_path, gpu_layers, report, threads, selected_env, selected_context):
                 self.acceleration = label
-                self.backend_device = label
+                self.backend_device = "NPU" if label == "OpenVINO NPU" else label
                 self.generation_speed = speed
                 self.selected_threads = threads
                 report(f"Local AI ready · {label} · cached benchmark {speed:.1f} tokens/second.")
                 return
             report("Saved performance settings did not start; testing available modes again.")
 
-        # Only benchmark after a new install or if the saved setup stops working.
+        # Benchmark only when the model/runtime or available hardware changed.
         candidates = []
-        openvino_executable = self._openvino_runtime_path()
         if openvino_executable is not None:
             cache_dir = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData/Local")) / "Aman" / "openvino-cache"
             candidates.append(("OpenVINO NPU", openvino_executable, 0, None, {
@@ -224,8 +249,7 @@ class AmanEngine:
             )
 
         speed, label, gpu_layers, threads, selected_executable, selected_env, selected_context = max(results, key=lambda item: item[0])
-        if selected_executable == executable:
-            self._save_cached_choice(executable, model_path, (label, gpu_layers, threads, speed))
+        self._save_cached_choice(selected_executable, model_path, (label, gpu_layers, threads, speed), openvino_executable)
         report(f"Fastest tested mode: {label} at {speed:.1f} tokens/second. Starting it…")
         if not self._launch(selected_executable, model_path, gpu_layers, report, threads, selected_env, selected_context):
             raise RuntimeError(f"Aman benchmarked {label} successfully but could not restart it.")
