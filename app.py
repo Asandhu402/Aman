@@ -594,18 +594,20 @@ class AmanWindow(QMainWindow):
         safe = html.escape(message).replace("\n", "<br>")
         if speaker == "You":
             block = (
-                "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='right'>"
-                "<table align='right' cellspacing='0' cellpadding='11' bgcolor='#f1f1f1' "
-                "style='border:1px solid #e7e7e7; border-radius:18px;'><tr><td>"
-                "<p style='color:#737780; font-size:9pt; margin:0 0 5px 0;'>You</p>"
-                f"<p style='color:#202123; margin:0;'>{safe}</p>"
+                "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='right' "
+                "style='padding:9px 0;'>"
+                "<table align='right' cellspacing='0' cellpadding='13' bgcolor='#dbeafe' "
+                "style='border:1px solid #bfdbfe; border-radius:26px;'><tr><td>"
+                "<p style='color:#315b91; font-size:9pt; margin:0 0 5px 0;'>You</p>"
+                f"<p style='color:#172f50; margin:0;'>{safe}</p>"
                 "</td></tr></table></td></tr></table>"
             )
         else:
             block = (
-                "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='left'>"
-                "<table align='left' cellspacing='0' cellpadding='11' bgcolor='#f7f7f8' "
-                "style='border:1px solid #ededee; border-radius:18px;'><tr><td>"
+                "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='left' "
+                "style='padding:9px 0;'>"
+                "<table align='left' cellspacing='0' cellpadding='13' bgcolor='#f7f7f8' "
+                "style='border:1px solid #ededee; border-radius:26px;'><tr><td>"
                 "<p style='color:#737780; font-size:9pt; margin:0 0 5px 0;'>✦ &nbsp; Aman</p>"
                 f"<p style='color:#202123; margin:0;'>{safe}</p>"
                 "</td></tr></table></td></tr></table>"
@@ -769,9 +771,10 @@ class AmanWindow(QMainWindow):
         cursor = self.chat.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.insertHtml(
-            "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='left'>"
-            "<table align='left' cellspacing='0' cellpadding='11' bgcolor='#f7f7f8' "
-            "style='border:1px solid #ededee; border-radius:18px;'><tr><td>"
+            "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='left' "
+            "style='padding:9px 0;'>"
+            "<table align='left' cellspacing='0' cellpadding='13' bgcolor='#f7f7f8' "
+            "style='border:1px solid #ededee; border-radius:26px;'><tr><td>"
             "<p style='color:#737780; font-size:9pt; margin:0 0 5px 0;'>✦ &nbsp; Aman</p>"
             "<p style='color:#202123; margin:0;'>"
         )
