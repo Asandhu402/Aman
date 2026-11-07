@@ -15,7 +15,6 @@ ArchitecturesAllowed=x64
 ArchitecturesInstallIn64BitMode=x64
 OutputDir=..\dist\installer
 OutputBaseFilename=Aman-Setup
-SetupIconFile=
 UninstallDisplayIcon={app}\Aman.exe
 WizardStyle=modern
 Compression=lzma2
