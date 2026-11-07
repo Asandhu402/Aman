@@ -8,18 +8,22 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
+# Official llama.cpp Vulkan build. Intel integrated graphics can use Vulkan
+# when a compatible Intel graphics driver is installed.
 RUNTIME_URL = (
     "https://github.com/ggml-org/llama.cpp/releases/download/b12177/"
-    "llama-b12177-bin-win-cpu-x64.zip"
+    "llama-b12177-bin-win-vulkan-x64.zip"
 )
-RUNTIME_SHA256 = "2d53212b57ccfc50128ec2e704c8ae44fb12df5206a731eef7be63f7669ebc74"
-RUNTIME_MAX_BYTES = 100_000_000
+RUNTIME_SHA256 = "84f0a856431ba9c97eb73a03601f68ce3d509d0eda010ca30a71d3243124ac32"
+RUNTIME_MAX_BYTES = 80_000_000
+RUNTIME_MARKER = ".aman-vulkan-runtime-b12177"
 
 
 class RuntimeManager:
     def __init__(self):
         self.runtime_dir = Path(__file__).resolve().parent / "runtime"
         self.executable = self.runtime_dir / "llama-server.exe"
+        self.marker = self.runtime_dir / RUNTIME_MARKER
 
     @staticmethod
     def _sha256(path: Path) -> str:
@@ -31,7 +35,7 @@ class RuntimeManager:
 
     def ensure_runtime(self, progress=None) -> Path:
         report = progress or (lambda _: None)
-        if self.executable.is_file():
+        if self.executable.is_file() and self.marker.is_file():
             return self.executable
 
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -42,7 +46,7 @@ class RuntimeManager:
         archive = Path(archive_name)
         staging = Path(tempfile.mkdtemp(prefix="aman-llama-stage-", dir=self.runtime_dir))
         try:
-            report("Downloading official llama.cpp Windows CPU runtime…")
+            report("Downloading official llama.cpp Vulkan runtime for Intel graphics…")
             request = urllib.request.Request(
                 RUNTIME_URL,
                 headers={"User-Agent": "Aman-Windows/0.1", "Accept": "application/octet-stream"},
@@ -57,13 +61,13 @@ class RuntimeManager:
                             break
                         downloaded += len(chunk)
                         if downloaded > RUNTIME_MAX_BYTES:
-                            raise RuntimeError("The llama.cpp runtime archive exceeded its size limit.")
+                            raise RuntimeError("The Vulkan runtime archive exceeded its size limit.")
                         output.write(chunk)
                         digest.update(chunk)
             if digest.hexdigest().lower() != RUNTIME_SHA256:
-                raise RuntimeError("The official llama.cpp runtime failed SHA-256 verification.")
+                raise RuntimeError("The official llama.cpp Vulkan runtime failed SHA-256 verification.")
 
-            report("Verifying and extracting llama.cpp…")
+            report("Verifying and extracting Vulkan runtime…")
             with zipfile.ZipFile(archive) as bundle:
                 for member in bundle.infolist():
                     target = (staging / member.filename).resolve()
@@ -73,10 +77,9 @@ class RuntimeManager:
 
             matches = list(staging.rglob("llama-server.exe"))
             if len(matches) != 1:
-                raise RuntimeError("The verified runtime archive did not contain exactly one llama-server.exe.")
+                raise RuntimeError("The verified Vulkan runtime did not contain exactly one llama-server.exe.")
 
             source_root = matches[0].parent
-            # Keep all DLLs beside the server; they are part of the official CPU bundle.
             for item in source_root.iterdir():
                 destination = self.runtime_dir / item.name
                 if destination.exists():
@@ -91,7 +94,8 @@ class RuntimeManager:
 
             if not self.executable.is_file():
                 raise RuntimeError("llama-server.exe was not installed at the expected runtime path.")
-            report("Official llama.cpp CPU runtime installed and verified.")
+            self.marker.write_text(RUNTIME_SHA256, encoding="ascii")
+            report("Vulkan runtime installed and verified.")
             return self.executable
         finally:
             archive.unlink(missing_ok=True)
