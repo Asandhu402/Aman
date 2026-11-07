@@ -29,19 +29,17 @@ The application verifies the model's SHA-256 before use. A different model file 
 ## Windows 11 setup
 
 1. Install 64-bit Python 3.11 or newer.
-2. Put a Windows CPU build of `llama-server.exe` in `runtime\\llama-server.exe`.
-   - Use an official llama.cpp Windows CPU release/build.
-   - Do not download executables from unofficial mirrors.
-3. Run `setup.bat`.
-4. Run `run.bat`.
-5. In Aman, choose **Download model**. The first download requires internet and at least 4.5 GB of free disk space.
-6. Choose **Start local AI**, then chat.
+2. Run `setup.bat`.
+3. Run `run.bat`.
+4. In Aman, click **Install CPU runtime**. This downloads the official llama.cpp Windows x64 CPU bundle (release `b12177`) and verifies its SHA-256 before extraction.
+5. Click **Download model**. The first download requires internet and at least 4.5 GB of free disk space.
+6. Click **Start local AI**, then chat.
 
-Aman stores its model under `%LOCALAPPDATA%\\Aman\\models`. The llama.cpp executable is kept in the repository's `runtime` folder for this development version.
+Aman stores its model under `%LOCALAPPDATA%\\Aman\\models`. The local llama.cpp runtime is extracted into the repository's `runtime` folder. The model and inference requests remain on your computer; internet is needed only for the first downloads.
 
 ## Current status
 
-This is the first application foundation. The Windows GUI and local HTTP client are implemented, but a Windows `llama-server.exe` must be supplied and the app must be tested on the target Windows machine before calling the release complete.
+The initial Windows GUI, pinned-model downloader, runtime downloader, and local HTTP client are in the development branch. They still need a real Windows 11 run and model-response test before the app can be called verified.
 
 ## Planned milestones
 
