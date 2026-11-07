@@ -4,11 +4,12 @@ import html
 import re
 import sys
 
-from PySide6.QtCore import QThread, Signal, QTimer, Qt
+from PySide6.QtCore import QThread, Signal, QTimer, Qt, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
-    QApplication, QFrame, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QProgressBar, QPushButton, QTextBrowser, QVBoxLayout, QWidget,
+    QApplication, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
+    QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar,
+    QPushButton, QTextBrowser, QVBoxLayout, QWidget,
 )
 
 from local_engine import AmanEngine
@@ -54,6 +55,7 @@ class AmanWindow(QMainWindow):
         self.runtime_manager = RuntimeManager()
         self.history: list[dict[str, str]] = []
         self.worker = None
+        self._animations = []
         self._build_ui()
         self._set_status("Preparing your private local assistant…")
 
@@ -141,7 +143,7 @@ class AmanWindow(QMainWindow):
             ".row { margin:20px auto; max-width:760px; } "
             ".who { color:#9ca6b8; font-size:12px; font-weight:600; margin-bottom:8px; } "
             ".user { background:#252a35; border:1px solid #343b49; border-radius:15px; padding:13px 16px; color:#f4f5f7; } "
-            ".assistant { color:#e8eaf0; padding:4px 2px 14px 2px; line-height:1.65; } "
+            ".assistant { color:#e8eaf0; padding:5px 2px 16px 2px; line-height:1.75; } "
         )
         self.chat.setHtml(
             "<div class='welcome'>What would you like to explore?</div>"
@@ -172,6 +174,11 @@ class AmanWindow(QMainWindow):
         composer_frame = QFrame()
         composer_frame.setObjectName("composer")
         composer_frame.setMaximumWidth(800)
+        composer_shadow = QGraphicsDropShadowEffect(composer_frame)
+        composer_shadow.setBlurRadius(30)
+        composer_shadow.setOffset(0, 5)
+        composer_shadow.setColor(Qt.GlobalColor.black)
+        composer_frame.setGraphicsEffect(composer_shadow)
         composer = QHBoxLayout(composer_frame)
         composer.setContentsMargins(16, 9, 9, 9)
         composer.setSpacing(10)
@@ -196,30 +203,54 @@ class AmanWindow(QMainWindow):
 
         outer.addWidget(main, 1)
         self.setCentralWidget(root)
+        self._root_opacity = QGraphicsOpacityEffect(root)
+        self._root_opacity.setOpacity(0.0)
+        root.setGraphicsEffect(self._root_opacity)
         self.setStyleSheet("""
-            QMainWindow, QWidget#root { background:#111318; }
-            QFrame#sidebar { background:#191c23; border-right:1px solid #292e38; }
+            QMainWindow, QWidget#root { background:#101218; }
+            QFrame#sidebar { background:#171a21; border-right:1px solid #292e38; }
             QLabel#brandMark { background:#e8edf7; color:#171a20; border-radius:11px; font-size:20px; font-weight:700; }
             QLabel#brandName { color:#f4f5f7; font-size:19px; font-weight:650; }
             QLabel#sectionLabel { color:#737d8e; font-size:10px; font-weight:700; letter-spacing:1px; margin-top:20px; }
             QLabel#currentConversation { color:#e7eaf0; background:#292e39; border-radius:8px; padding:11px 9px; font-size:12px; }
             QLabel#privacyNote { color:#8992a2; background:#20242d; border:1px solid #2d333e; border-radius:10px; padding:12px; font-size:11px; }
             QPushButton#newChat { background:#252a34; color:#f0f2f6; border:1px solid #3a414e; border-radius:9px; padding:12px; text-align:left; font-size:13px; }
-            QPushButton#newChat:hover { background:#303744; }
+            QPushButton#newChat { transition: background 160ms; }
+            QPushButton#newChat:hover { background:#343c4b; border-color:#56647b; }
+            QPushButton#newChat:pressed { background:#202630; }
             QFrame#topbar { background:#111318; border-bottom:1px solid #252a33; }
             QLabel#topTitle { color:#f1f2f5; font-size:15px; font-weight:600; }
             QLabel#topSubtitle { color:#7f8999; font-size:11px; }
             QLabel#statusBadge { color:#a8b4c7; background:#202630; border:1px solid #303947; border-radius:12px; padding:7px 11px; font-size:11px; }
             QFrame#bottomPanel { background:#111318; }
-            QFrame#composer { background:#1c2028; border:1px solid #3a414d; border-radius:18px; }
+            QFrame#composer { background:#1d222c; border:1px solid #3b4555; border-radius:20px; }
+            QFrame#composer:hover { border-color:#58677f; }
             QLineEdit#messageInput { background:transparent; color:#f3f4f6; border:0; padding:9px 4px; font-size:14px; }
             QPushButton#sendButton { background:#e9edf5; color:#171a20; border:0; border-radius:13px; font-size:23px; font-weight:600; }
             QPushButton#sendButton:hover { background:#ffffff; }
+            QPushButton#sendButton:pressed { background:#cbd5e6; }
             QPushButton:disabled { background:#525966; color:#aeb4bf; }
             QLabel#footerStatus { color:#747e8e; font-size:10px; }
             QProgressBar#modelProgress { background:#292f3a; border:0; border-radius:4px; }
             QProgressBar#modelProgress::chunk { background:#8da9e8; border-radius:4px; }
         """)
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        if not getattr(self, "_intro_animation_started", False):
+            self._intro_animation_started = True
+            self._animate_opacity(self._root_opacity, 0.0, 1.0, 420)
+
+    def _animate_opacity(self, effect, start: float, end: float, duration: int):
+        effect.setOpacity(start)
+        animation = QPropertyAnimation(effect, b"opacity", self)
+        animation.setDuration(duration)
+        animation.setStartValue(start)
+        animation.setEndValue(end)
+        animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        animation.finished.connect(lambda: self._animations.remove(animation) if animation in self._animations else None)
+        self._animations.append(animation)
+        animation.start()
 
     def _set_status(self, message: str):
         self.status.setText(message)
@@ -273,6 +304,10 @@ class AmanWindow(QMainWindow):
         cursor.insertBlock()
         self.chat.setTextCursor(cursor)
         self.chat.ensureCursorVisible()
+        if not hasattr(self, "_chat_opacity"):
+            self._chat_opacity = QGraphicsOpacityEffect(self.chat)
+            self.chat.setGraphicsEffect(self._chat_opacity)
+        self._animate_opacity(self._chat_opacity, 0.78, 1.0, 220)
 
     def _run_worker(self, task, success_message: str):
         if self.worker and self.worker.isRunning():
