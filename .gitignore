@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+runtime/*.dll
+runtime/*.exe
+runtime/*.gguf
+models/
+dist/
+build/
+*.log
