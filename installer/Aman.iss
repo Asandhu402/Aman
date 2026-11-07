@@ -27,10 +27,12 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription:
 
 [Files]
 Source: "..\dist\Aman\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\vc_redist.x64.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall
 
 [Icons]
 Name: "{autoprograms}\Aman"; Filename: "{app}\Aman.exe"
 Name: "{autodesktop}\Aman"; Filename: "{app}\Aman.exe"; Tasks: desktopicon
 
 [Run]
+Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Microsoft Visual C++ runtime…"; Flags: waituntilterminated runhidden
 Filename: "{app}\Aman.exe"; Description: "Launch Aman"; Flags: postinstall nowait skipifsilent
