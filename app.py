@@ -244,6 +244,13 @@ class AmanWindow(QMainWindow):
             self.progress_bar.setFormat("Verifying model…")
             self.progress_bar.show()
             self.ready_badge.setText("●  Verifying")
+        elif "Local AI ready ·" in message:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(100)
+            self.progress_bar.setFormat("Performance test complete")
+            self.progress_bar.show()
+            mode = message.split("Local AI ready ·", 1)[1].split("·", 1)[0].strip()
+            self.ready_badge.setText(f"●  {mode}")
         elif "downloaded and verified" in message or "ready" in message.lower():
             self.progress_bar.setRange(0, 100)
             self.progress_bar.setValue(100)
