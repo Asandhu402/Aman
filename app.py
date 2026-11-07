@@ -227,6 +227,7 @@ class AmanWindow(QMainWindow):
 
         bottom = QFrame()
         bottom.setObjectName("bottomPanel")
+        bottom.setMinimumHeight(112)
         bottom_layout = QVBoxLayout(bottom)
         bottom_layout.setContentsMargins(0, 12, 0, 18)
         bottom_layout.setSpacing(8)
@@ -245,7 +246,7 @@ class AmanWindow(QMainWindow):
         composer_frame = QFrame()
         composer_frame.setObjectName("composer")
         composer_frame.setMaximumWidth(800)
-        composer_frame.setMinimumHeight(66)
+        composer_frame.setFixedHeight(66)
         composer_shadow = QGraphicsDropShadowEffect(composer_frame)
         composer_shadow.setBlurRadius(30)
         composer_shadow.setOffset(0, 5)
@@ -269,6 +270,9 @@ class AmanWindow(QMainWindow):
         composer.addWidget(self.message_input, 1)
         composer.addWidget(self.send_button)
         bottom_layout.addWidget(composer_frame, 0, Qt.AlignmentFlag.AlignHCenter)
+        composer_frame.setVisible(True)
+        self.message_input.setVisible(True)
+        self.send_button.setVisible(True)
 
         self.status = QLabel("Starting local AI…")
         self.status.setObjectName("footerStatus")
@@ -285,9 +289,6 @@ class AmanWindow(QMainWindow):
         self._new_chat_shortcut.activated.connect(self.new_chat)
         self._copy_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
         self._copy_shortcut.activated.connect(self.copy_last_answer)
-        self._root_opacity = QGraphicsOpacityEffect(root)
-        self._root_opacity.setOpacity(0.0)
-        root.setGraphicsEffect(self._root_opacity)
         self.setStyleSheet("""
             QMainWindow, QWidget#root { background:#101218; }
             QFrame#sidebar { background:#171a21; border-right:1px solid #292e38; }
@@ -358,9 +359,10 @@ class AmanWindow(QMainWindow):
 
     def showEvent(self, event):
         super().showEvent(event)
-        if not getattr(self, "_intro_animation_started", False):
-            self._intro_animation_started = True
-            self._animate_opacity(self._root_opacity, 0.0, 1.0, 420)
+        # Keep the chat composer visible when the window first appears and after
+        # Qt recalculates the layout during model startup.
+        self.message_input.setVisible(True)
+        self.send_button.setVisible(True)
 
     def _animate_opacity(self, effect, start: float, end: float, duration: int):
         effect.setOpacity(start)
