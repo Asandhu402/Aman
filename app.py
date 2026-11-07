@@ -56,6 +56,12 @@ class AmanWindow(QMainWindow):
         self.history: list[dict[str, str]] = []
         self.worker = None
         self._animations = []
+        self._sidebar_animation = None
+        self._last_answer = ""
+        self._thinking_dots = 0
+        self._thinking_timer = QTimer(self)
+        self._thinking_timer.setInterval(420)
+        self._thinking_timer.timeout.connect(self._animate_thinking)
         self._build_ui()
         self._set_status("Preparing your private local assistant…")
 
@@ -67,9 +73,11 @@ class AmanWindow(QMainWindow):
         outer.setSpacing(0)
 
         # ChatGPT-inspired compact navigation rail.
-        sidebar = QFrame()
+        self.sidebar = QFrame()
+        sidebar = self.sidebar
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(238)
+        sidebar.setMinimumWidth(0)
+        sidebar.setMaximumWidth(238)
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(16, 22, 16, 18)
         side.setSpacing(14)
@@ -116,7 +124,13 @@ class AmanWindow(QMainWindow):
         topbar = QFrame()
         topbar.setObjectName("topbar")
         top_layout = QHBoxLayout(topbar)
-        top_layout.setContentsMargins(30, 18, 30, 18)
+        top_layout.setContentsMargins(22, 18, 30, 18)
+        self.sidebar_toggle = QPushButton("☰")
+        self.sidebar_toggle.setObjectName("iconButton")
+        self.sidebar_toggle.setFixedSize(38, 38)
+        self.sidebar_toggle.setToolTip("Show or hide sidebar")
+        self.sidebar_toggle.clicked.connect(self.toggle_sidebar)
+        top_layout.addWidget(self.sidebar_toggle)
         heading = QVBoxLayout()
         title = QLabel("New conversation")
         title.setObjectName("topTitle")
@@ -126,6 +140,12 @@ class AmanWindow(QMainWindow):
         heading.addWidget(subtitle)
         top_layout.addLayout(heading)
         top_layout.addStretch(1)
+        self.copy_button = QPushButton("Copy last reply")
+        self.copy_button.setObjectName("copyButton")
+        self.copy_button.setToolTip("Copy Aman's latest response")
+        self.copy_button.clicked.connect(self.copy_last_answer)
+        self.copy_button.hide()
+        top_layout.addWidget(self.copy_button)
         self.ready_badge = QLabel("●  Starting")
         self.ready_badge.setObjectName("statusBadge")
         top_layout.addWidget(self.ready_badge)
@@ -215,11 +235,14 @@ class AmanWindow(QMainWindow):
             QLabel#currentConversation { color:#e7eaf0; background:#292e39; border-radius:8px; padding:11px 9px; font-size:12px; }
             QLabel#privacyNote { color:#8992a2; background:#20242d; border:1px solid #2d333e; border-radius:10px; padding:12px; font-size:11px; }
             QPushButton#newChat { background:#252a34; color:#f0f2f6; border:1px solid #3a414e; border-radius:9px; padding:12px; text-align:left; font-size:13px; }
-            QPushButton#newChat { transition: background 160ms; }
             QPushButton#newChat:hover { background:#343c4b; border-color:#56647b; }
             QPushButton#newChat:pressed { background:#202630; }
             QFrame#topbar { background:#111318; border-bottom:1px solid #252a33; }
             QLabel#topTitle { color:#f1f2f5; font-size:15px; font-weight:600; }
+            QPushButton#iconButton { background:#202630; color:#dce3ef; border:1px solid #343d4c; border-radius:10px; font-size:17px; }
+            QPushButton#iconButton:hover { background:#303949; }
+            QPushButton#copyButton { background:#202630; color:#cbd5e4; border:1px solid #343d4c; border-radius:9px; padding:8px 11px; font-size:11px; }
+            QPushButton#copyButton:hover { background:#303949; }
             QLabel#topSubtitle { color:#7f8999; font-size:11px; }
             QLabel#statusBadge { color:#a8b4c7; background:#202630; border:1px solid #303947; border-radius:12px; padding:7px 11px; font-size:11px; }
             QFrame#bottomPanel { background:#111318; }
@@ -251,6 +274,41 @@ class AmanWindow(QMainWindow):
         animation.finished.connect(lambda: self._animations.remove(animation) if animation in self._animations else None)
         self._animations.append(animation)
         animation.start()
+
+    def toggle_sidebar(self):
+        if self._sidebar_animation and self._sidebar_animation.state() == QPropertyAnimation.State.Running:
+            self._sidebar_animation.stop()
+        opening = not self.sidebar.isVisible()
+        if opening:
+            self.sidebar.show()
+            start, end = 0, 238
+        else:
+            start, end = self.sidebar.width(), 0
+        self._sidebar_animation = QPropertyAnimation(self.sidebar, b"maximumWidth", self)
+        self._sidebar_animation.setDuration(220)
+        self._sidebar_animation.setStartValue(start)
+        self._sidebar_animation.setEndValue(end)
+        self._sidebar_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
+        if not opening:
+            self._sidebar_animation.finished.connect(lambda: self.sidebar.hide() if self.sidebar.maximumWidth() == 0 else None)
+        self._sidebar_animation.start()
+
+    def copy_last_answer(self):
+        if self._last_answer:
+            QApplication.clipboard().setText(self._last_answer)
+            self._set_status("Latest reply copied to clipboard.")
+
+    def _start_thinking(self):
+        self._thinking_dots = 0
+        self.status.setText("Aman is thinking on your computer")
+        self._thinking_timer.start()
+
+    def _animate_thinking(self):
+        self._thinking_dots = (self._thinking_dots + 1) % 4
+        self.status.setText("Aman is thinking on your computer" + "." * self._thinking_dots)
+
+    def _stop_thinking(self):
+        self._thinking_timer.stop()
 
     def _set_status(self, message: str):
         self.status.setText(message)
@@ -339,6 +397,7 @@ class AmanWindow(QMainWindow):
         self._append("You", prompt)
         self.history.append({"role": "user", "content": prompt})
         self.send_button.setEnabled(False)
+        self._start_thinking()
 
         def reply(report):
             report("Aman is thinking on your computer…")
@@ -355,6 +414,8 @@ class AmanWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             return
         self.history.clear()
+        self._last_answer = ""
+        self.copy_button.hide()
         self.chat.clear()
         self.chat.setHtml(
             "<div class='welcome'>What would you like to explore?</div>"
@@ -363,14 +424,18 @@ class AmanWindow(QMainWindow):
         self._set_status("New conversation")
 
     def _receive_reply(self, answer: str):
+        self._stop_thinking()
         clean = re.sub(r"<think>.*?</think>", "", answer, flags=re.I | re.S).strip()
         clean = re.sub(r"</?think>", "", clean, flags=re.I).strip()
         self.history.append({"role": "assistant", "content": clean})
+        self._last_answer = clean
+        self.copy_button.show()
         self._append("Aman", clean)
         self._set_status("Local model ready.")
         self.ready_badge.setText("●  Ready")
 
     def _worker_failed(self, message: str):
+        self._stop_thinking()
         self._set_status("Something went wrong. Please try again.")
         self.ready_badge.setText("●  Needs attention")
         self.progress_bar.hide()
