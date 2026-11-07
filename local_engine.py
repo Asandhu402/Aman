@@ -26,6 +26,14 @@ class AmanEngine:
 
     def _openvino_runtime_path(self) -> Path | None:
         root = Path(__file__).resolve().parent / "runtime-openvino"
+        marker = root / ".aman-openvino-runtime-b12177"
+        try:
+            if marker.read_text(encoding="ascii").strip() != (
+                "b7b6c2aef19cc228f65d4a146ea5825b3d94de8418a2723406f6458531979505"
+            ):
+                return None
+        except OSError:
+            return None
         direct = root / "llama-server.exe"
         if direct.is_file():
             return direct
