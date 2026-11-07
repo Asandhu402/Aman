@@ -46,6 +46,28 @@ class TaskWorker(QThread):
             self.failed.emit(f"{type(exc).__name__}: {detail or repr(exc)}")
 
 
+class ChatWorker(QThread):
+    chunk = Signal(str)
+    succeeded = Signal(str)
+    failed = Signal(str)
+
+    def __init__(self, engine, system_prompt, history, parent=None):
+        super().__init__(parent)
+        self.engine = engine
+        self.system_prompt = system_prompt
+        self.history = history
+
+    def run(self):
+        try:
+            answer = self.engine.chat_stream(
+                self.system_prompt, self.history, self.chunk.emit
+            )
+            self.succeeded.emit(answer)
+        except Exception as exc:
+            detail = str(exc).strip() or repr(exc)
+            self.failed.emit(f"{type(exc).__name__}: {detail}")
+
+
 class AmanWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -452,16 +474,58 @@ class AmanWindow(QMainWindow):
         self.send_button.setEnabled(False)
         self._start_thinking()
 
-        def reply(report):
-            report("Aman is thinking on your computer…")
-            return self.engine.chat(SYSTEM_PROMPT, self.history)
-
-        self.worker = TaskWorker(reply, self)
-        self.worker.progress.connect(self._handle_progress)
-        self.worker.succeeded.connect(self._receive_reply)
+        self._begin_streamed_reply()
+        self.worker = ChatWorker(self.engine, SYSTEM_PROMPT, list(self.history), self)
+        self.worker.chunk.connect(self._append_stream_chunk)
+        self.worker.succeeded.connect(self._finish_streamed_reply)
         self.worker.failed.connect(self._worker_failed)
         self.worker.finished.connect(lambda: self.send_button.setEnabled(True))
         self.worker.start()
+
+    def _begin_streamed_reply(self):
+        cursor = self.chat.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        cursor.insertHtml("<div class='row'><div class='who'>✦ &nbsp; Aman</div><div class='assistant'>")
+        self._stream_cursor = cursor
+        self._stream_raw = ""
+        self._stream_displayed = 0
+        self.chat.setTextCursor(cursor)
+        self.chat.ensureCursorVisible()
+
+    def _append_stream_chunk(self, chunk: str):
+        self._stream_raw += chunk
+        visible = re.sub(r"<think>.*?</think>", "", self._stream_raw, flags=re.I | re.S)
+        visible = re.sub(r"</?think>", "", visible, flags=re.I)
+        open_tag = visible.rfind("<")
+        if open_tag >= 0 and ">" not in visible[open_tag:]:
+            visible = visible[:open_tag]
+        if visible.startswith("<think"):
+            closing = re.search(r"</think>", self._stream_raw, flags=re.I)
+            if not closing:
+                visible = ""
+        if len(visible) > self._stream_displayed:
+            addition = visible[self._stream_displayed:]
+            self._stream_cursor.insertText(addition)
+            self._stream_displayed = len(visible)
+            self.chat.setTextCursor(self._stream_cursor)
+            self.chat.ensureCursorVisible()
+
+    def _finish_streamed_reply(self, answer: str):
+        self._stop_thinking()
+        clean = re.sub(r"<think>.*?</think>", "", answer, flags=re.I | re.S).strip()
+        clean = re.sub(r"</?think>", "", clean, flags=re.I).strip()
+        self.history.append({"role": "assistant", "content": clean})
+        if self.active_conversation_id is not None:
+            self.conversation_store.add_message(self.active_conversation_id, "assistant", clean)
+        self.refresh_history_list(select_id=self.active_conversation_id)
+        self._last_answer = clean
+        self.copy_button.show()
+        self._stream_cursor.insertHtml("</div></div>")
+        self._stream_cursor.insertBlock()
+        self.chat.setTextCursor(self._stream_cursor)
+        self.chat.ensureCursorVisible()
+        self._set_status("Local model ready.")
+        self.ready_badge.setText("●  Ready")
 
     def new_chat(self):
         if self.worker and self.worker.isRunning():
