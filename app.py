@@ -664,7 +664,7 @@ class AmanWindow(QMainWindow):
 
     def _research_query(self, prompt: str) -> str:
         query = re.sub(
-            r"^\s*(?:please\s+)?(?:research|search (?:the )?web for|google)\s*",
+            r"^\s*(?:please\s+)?(?:research|search (?:the )?web(?: for)?|look up online|find online|google)\s*",
             "",
             prompt,
             flags=re.I,
