@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import re
 import sys
 
-from PySide6.QtCore import QThread, Signal
+from PySide6.QtCore import QThread, Signal, QTimer
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import (
     QApplication, QHBoxLayout, QLabel, QLineEdit, QMainWindow,
-    QMessageBox, QPushButton, QTextEdit, QVBoxLayout, QWidget,
+    QMessageBox, QProgressBar, QPushButton, QTextEdit, QVBoxLayout, QWidget,
 )
 
 from local_engine import AmanEngine
@@ -52,7 +53,7 @@ class AmanWindow(QMainWindow):
         self.history: list[dict[str, str]] = []
         self.worker = None
         self._build_ui()
-        self._set_status("Ready. Select Start local AI to prepare Aman on this computer.")
+        self._set_status("Preparing Aman…")
 
     def _build_ui(self):
         root = QWidget()
@@ -70,10 +71,6 @@ class AmanWindow(QMainWindow):
         title_box.addWidget(subtitle)
         header.addLayout(title_box)
         header.addStretch(1)
-
-        self.start_button = QPushButton("Start local AI")
-        self.start_button.setObjectName("primary")
-        header.addWidget(self.start_button)
         layout.addLayout(header)
 
         self.chat = QTextEdit()
@@ -97,10 +94,22 @@ class AmanWindow(QMainWindow):
         layout.addLayout(composer)
 
         self.status = QLabel()
-        self.status.setStyleSheet("color: #888; padding: 4px;")
+        self.status.setStyleSheet("color: #aaa; padding: 4px;")
         layout.addWidget(self.status)
 
-        self.start_button.clicked.connect(self.start_engine)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.progress_bar.setTextVisible(True)
+        self.progress_bar.setFormat("%p%")
+        self.progress_bar.setStyleSheet(
+            "QProgressBar { background: #242830; color: white; border: 0; "
+            "border-radius: 5px; height: 12px; text-align: center; } "
+            "QProgressBar::chunk { background: #3769d6; border-radius: 5px; }"
+        )
+        self.progress_bar.hide()
+        layout.addWidget(self.progress_bar)
+
         self.send_button.clicked.connect(self.send_message)
         self.setCentralWidget(root)
         self.setStyleSheet(
@@ -117,18 +126,38 @@ class AmanWindow(QMainWindow):
     def _set_status(self, message: str):
         self.status.setText(message)
 
+    def _handle_progress(self, message: str):
+        self._set_status(message)
+        match = re.search(r"Downloading model:\s*(\d{1,3})%", message)
+        if match:
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(min(100, int(match.group(1))))
+            self.progress_bar.setFormat(f"Model download · {min(100, int(match.group(1)))}%")
+            self.progress_bar.show()
+        elif "Downloading the pinned" in message:
+            self.progress_bar.setRange(0, 0)
+            self.progress_bar.setFormat("Starting model download…")
+            self.progress_bar.show()
+        elif "Verifying" in message:
+            self.progress_bar.setRange(0, 0)
+            self.progress_bar.setFormat("Verifying model…")
+            self.progress_bar.show()
+        elif "downloaded and verified" in message or "ready" in message.lower():
+            self.progress_bar.setRange(0, 100)
+            self.progress_bar.setValue(100)
+            self.progress_bar.setFormat("Complete")
+            self.progress_bar.show()
+
     def _append(self, speaker: str, message: str):
         self.chat.append(f"{speaker}\n{message}\n")
         self.chat.ensureCursorVisible()
 
     def _run_worker(self, task, success_message: str):
         if self.worker and self.worker.isRunning():
-            QMessageBox.information(self, "Aman", "Another task is already running.")
             return
-        for button in (self.start_button, self.send_button):
-            button.setEnabled(False)
+        self.send_button.setEnabled(False)
         self.worker = TaskWorker(task, self)
-        self.worker.progress.connect(self._set_status)
+        self.worker.progress.connect(self._handle_progress)
         self.worker.succeeded.connect(lambda _result: self._set_status(success_message))
         self.worker.failed.connect(self._worker_failed)
         self.worker.finished.connect(self._worker_finished)
@@ -148,7 +177,7 @@ class AmanWindow(QMainWindow):
             return
         if not self.engine.is_ready:
             QMessageBox.information(
-                self, "Aman", "Start the local AI first. No message has been sent."
+                self, "Aman", "Aman is still preparing. You can chat as soon as setup finishes."
             )
             return
 
@@ -162,7 +191,7 @@ class AmanWindow(QMainWindow):
             return self.engine.chat(SYSTEM_PROMPT, self.history)
 
         self.worker = TaskWorker(reply, self)
-        self.worker.progress.connect(self._set_status)
+        self.worker.progress.connect(self._handle_progress)
         self.worker.succeeded.connect(self._receive_reply)
         self.worker.failed.connect(self._worker_failed)
         self.worker.finished.connect(lambda: self.send_button.setEnabled(True))
@@ -175,11 +204,11 @@ class AmanWindow(QMainWindow):
 
     def _worker_failed(self, message: str):
         self._set_status("Task failed.")
+        self.progress_bar.hide()
         QMessageBox.critical(self, "Aman", message)
 
     def _worker_finished(self):
-        for button in (self.start_button, self.send_button):
-            button.setEnabled(True)
+        self.send_button.setEnabled(True)
 
     def closeEvent(self, event):
         if self.worker and self.worker.isRunning():
@@ -195,6 +224,7 @@ def main():
     app.setApplicationName("Aman")
     window = AmanWindow()
     window.show()
+    QTimer.singleShot(0, window.start_engine)
     return app.exec()
 
 
