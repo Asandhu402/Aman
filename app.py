@@ -10,6 +10,7 @@ from PySide6.QtWidgets import (
     QApplication, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar,
     QPushButton, QTextBrowser, QVBoxLayout, QWidget, QListWidget, QListWidgetItem,
+    QDialog, QPlainTextEdit,
 )
 
 from conversation_store import ConversationStore
@@ -84,6 +85,7 @@ class AmanWindow(QMainWindow):
         self._animations = []
         self._sidebar_animation = None
         self._last_answer = ""
+        self._log_messages: list[str] = []
         self._thinking_dots = 0
         self._thinking_timer = QTimer(self)
         self._thinking_timer.setInterval(420)
@@ -96,6 +98,7 @@ class AmanWindow(QMainWindow):
         self._stream_flush_timer.timeout.connect(self._flush_stream_chunks)
         self._stream_open = False
         self._build_ui()
+        self._log("INFO", "Aman application started")
         self._set_status("Preparing your private local assistant…")
 
     def _build_ui(self):
@@ -186,6 +189,11 @@ class AmanWindow(QMainWindow):
         self.copy_button.clicked.connect(self.copy_last_answer)
         self.copy_button.hide()
         top_layout.addWidget(self.copy_button)
+        self.logs_button = QPushButton("View logs")
+        self.logs_button.setObjectName("copyButton")
+        self.logs_button.setToolTip("Open diagnostic logs to copy and share")
+        self.logs_button.clicked.connect(self.show_logs)
+        top_layout.addWidget(self.logs_button)
         self.ready_badge = QLabel("●  Starting")
         self.ready_badge.setObjectName("statusBadge")
         top_layout.addWidget(self.ready_badge)
@@ -313,6 +321,37 @@ class AmanWindow(QMainWindow):
             QProgressBar#modelProgress::chunk { background:#8da9e8; border-radius:4px; }
         """)
 
+    def _log(self, level: str, message: str):
+        from datetime import datetime
+        entry = f"{datetime.now().astimezone().isoformat(timespec='seconds')} [{level}] {message}"
+        self._log_messages.append(entry)
+        if len(self._log_messages) > 600:
+            del self._log_messages[:-600]
+
+    def show_logs(self):
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Aman diagnostic logs")
+        dialog.resize(820, 560)
+        layout = QVBoxLayout(dialog)
+        info = QLabel("Recent startup, chat and error events. Copy these logs and paste them into ChatGPT when reporting a problem.")
+        info.setWordWrap(True)
+        layout.addWidget(info)
+        viewer = QPlainTextEdit()
+        viewer.setReadOnly(True)
+        viewer.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
+        viewer.setPlainText("\\n".join(self._log_messages) or "No log entries yet.")
+        layout.addWidget(viewer, 1)
+        buttons = QHBoxLayout()
+        copy = QPushButton("Copy all logs")
+        copy.clicked.connect(lambda: (QApplication.clipboard().setText(viewer.toPlainText()), self._set_status("Diagnostic logs copied.")))
+        buttons.addWidget(copy)
+        buttons.addStretch(1)
+        close = QPushButton("Close")
+        close.clicked.connect(dialog.accept)
+        buttons.addWidget(close)
+        layout.addLayout(buttons)
+        dialog.exec()
+
     def showEvent(self, event):
         super().showEvent(event)
         if not getattr(self, "_intro_animation_started", False):
@@ -390,6 +429,7 @@ class AmanWindow(QMainWindow):
         self.status.setText(message)
 
     def _handle_progress(self, message: str):
+        self._log("INFO", f"Startup: {message}")
         self._set_status(message)
         match = re.search(r"Downloading model:\\s*(\\d{1,3})%", message)
         if match:
@@ -451,6 +491,7 @@ class AmanWindow(QMainWindow):
         self.worker.start()
 
     def start_engine(self):
+        self._log("INFO", "Starting model and runtime initialization")
         def start(report):
             report("Checking the model and local runtime…")
             model_path = self.model_manager.ensure_model(report)
@@ -463,11 +504,13 @@ class AmanWindow(QMainWindow):
         if not prompt:
             return
         if not self.engine.is_ready:
+            self._log("WARNING", "Chat send attempted before local engine was ready")
             self._set_status("Aman is still getting ready. You can chat in a moment.")
             return
         self.message_input.clear()
         if not self.history:
             self.chat.clear()
+        self._log("INFO", f"User submitted message ({len(prompt)} characters)")
         self._append("You", prompt)
         self.history.append({"role": "user", "content": prompt})
         if self.active_conversation_id is None:
@@ -521,6 +564,7 @@ class AmanWindow(QMainWindow):
             self.chat.ensureCursorVisible()
 
     def _finish_streamed_reply(self, answer: str):
+        self._log("INFO", f"Assistant reply completed ({len(answer)} characters)")
         self._stream_flush_timer.stop()
         self._flush_stream_chunks()
         self._stop_thinking()
@@ -612,6 +656,7 @@ class AmanWindow(QMainWindow):
         self.ready_badge.setText("●  Ready")
 
     def _worker_failed(self, message: str):
+        self._log("ERROR", message)
         self._stream_flush_timer.stop()
         self._flush_stream_chunks()
         if self._stream_open:
