@@ -88,6 +88,13 @@ class AmanWindow(QMainWindow):
         self._thinking_timer = QTimer(self)
         self._thinking_timer.setInterval(420)
         self._thinking_timer.timeout.connect(self._animate_thinking)
+        # Batch token updates so Qt does not relayout the transcript for every token.
+        self._stream_pending: list[str] = []
+        self._stream_flush_timer = QTimer(self)
+        self._stream_flush_timer.setSingleShot(True)
+        self._stream_flush_timer.setInterval(40)
+        self._stream_flush_timer.timeout.connect(self._flush_stream_chunks)
+        self._stream_open = False
         self._build_ui()
         self._set_status("Preparing your private local assistant…")
 
@@ -431,10 +438,6 @@ class AmanWindow(QMainWindow):
         cursor.insertBlock()
         self.chat.setTextCursor(cursor)
         self.chat.ensureCursorVisible()
-        if not hasattr(self, "_chat_opacity"):
-            self._chat_opacity = QGraphicsOpacityEffect(self.chat)
-            self.chat.setGraphicsEffect(self._chat_opacity)
-        self._animate_opacity(self._chat_opacity, 0.78, 1.0, 220)
 
     def _run_worker(self, task, success_message: str):
         if self.worker and self.worker.isRunning():
@@ -489,28 +492,37 @@ class AmanWindow(QMainWindow):
         self._stream_cursor = cursor
         self._stream_raw = ""
         self._stream_displayed = 0
+        self._stream_pending.clear()
+        self._stream_open = True
         self.chat.setTextCursor(cursor)
         self.chat.ensureCursorVisible()
 
     def _append_stream_chunk(self, chunk: str):
-        self._stream_raw += chunk
+        self._stream_pending.append(chunk)
+        if not self._stream_flush_timer.isActive():
+            self._stream_flush_timer.start()
+
+    def _flush_stream_chunks(self):
+        if not self._stream_pending or not self._stream_open:
+            return
+        self._stream_raw += "".join(self._stream_pending)
+        self._stream_pending.clear()
         visible = re.sub(r"<think>.*?</think>", "", self._stream_raw, flags=re.I | re.S)
         visible = re.sub(r"</?think>", "", visible, flags=re.I)
         open_tag = visible.rfind("<")
         if open_tag >= 0 and ">" not in visible[open_tag:]:
             visible = visible[:open_tag]
-        if visible.startswith("<think"):
-            closing = re.search(r"</think>", self._stream_raw, flags=re.I)
-            if not closing:
-                visible = ""
+        if visible.startswith("<think") and not re.search(r"</think>", self._stream_raw, flags=re.I):
+            visible = ""
         if len(visible) > self._stream_displayed:
-            addition = visible[self._stream_displayed:]
-            self._stream_cursor.insertText(addition)
+            self._stream_cursor.insertText(visible[self._stream_displayed:])
             self._stream_displayed = len(visible)
             self.chat.setTextCursor(self._stream_cursor)
             self.chat.ensureCursorVisible()
 
     def _finish_streamed_reply(self, answer: str):
+        self._stream_flush_timer.stop()
+        self._flush_stream_chunks()
         self._stop_thinking()
         clean = re.sub(r"<think>.*?</think>", "", answer, flags=re.I | re.S).strip()
         clean = re.sub(r"</?think>", "", clean, flags=re.I).strip()
@@ -521,6 +533,7 @@ class AmanWindow(QMainWindow):
         self._last_answer = clean
         self.copy_button.show()
         self._stream_cursor.insertHtml("</div></div>")
+        self._stream_open = False
         self._stream_cursor.insertBlock()
         self.chat.setTextCursor(self._stream_cursor)
         self.chat.ensureCursorVisible()
@@ -599,6 +612,12 @@ class AmanWindow(QMainWindow):
         self.ready_badge.setText("●  Ready")
 
     def _worker_failed(self, message: str):
+        self._stream_flush_timer.stop()
+        self._flush_stream_chunks()
+        if self._stream_open:
+            self._stream_cursor.insertHtml("</div></div>")
+            self._stream_cursor.insertBlock()
+            self._stream_open = False
         self._stop_thinking()
         self._set_status("Something went wrong. Please try again.")
         self.ready_badge.setText("●  Needs attention")
