@@ -240,6 +240,53 @@ class AmanEngine:
         except (KeyError, IndexError, TypeError, json.JSONDecodeError) as exc:
             raise RuntimeError("The local model returned an invalid chat response.") from exc
 
+    def chat_stream(self, system_prompt: str, history: list[dict[str, str]], on_chunk):
+        """Stream generated text from the local llama.cpp OpenAI-compatible endpoint."""
+        recent_history = history[-12:]
+        payload = {
+            "model": "local-model",
+            "messages": [{"role": "system", "content": system_prompt}, *recent_history],
+            "temperature": 0.4,
+            "top_p": 0.9,
+            "max_tokens": 1024,
+            "stream": True,
+            "chat_template_kwargs": {"enable_thinking": False},
+        }
+        request = urllib.request.Request(
+            f"{self.base_url}/chat/completions",
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json", "Accept": "text/event-stream"},
+            method="POST",
+        )
+        pieces = []
+        try:
+            with urllib.request.urlopen(request, timeout=600) as response:
+                for raw_line in response:
+                    line = raw_line.decode("utf-8", errors="replace").strip()
+                    if not line or not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        event = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = event.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = choices[0].get("delta") or {}
+                    content = delta.get("content")
+                    if isinstance(content, str) and content:
+                        pieces.append(content)
+                        on_chunk(content)
+            answer = "".join(pieces).strip()
+            if not answer:
+                raise RuntimeError("The local model returned an empty answer.")
+            return answer
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"Could not reach Aman's local model server: {exc}") from exc
+
     def stop(self):
         if self.process and self.process.poll() is None:
             self.process.terminate()
