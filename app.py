@@ -52,7 +52,7 @@ class AmanWindow(QMainWindow):
         self.history: list[dict[str, str]] = []
         self.worker = None
         self._build_ui()
-        self._set_status("Ready. Install the local runtime and model to begin.")
+        self._set_status("Ready. Select Start local AI to prepare Aman on this computer.")
 
     def _build_ui(self):
         root = QWidget()
@@ -71,12 +71,8 @@ class AmanWindow(QMainWindow):
         header.addLayout(title_box)
         header.addStretch(1)
 
-        self.runtime_button = QPushButton("Install CPU runtime")
-        self.download_button = QPushButton("Download model")
         self.start_button = QPushButton("Start local AI")
         self.start_button.setObjectName("primary")
-        header.addWidget(self.runtime_button)
-        header.addWidget(self.download_button)
         header.addWidget(self.start_button)
         layout.addLayout(header)
 
@@ -104,8 +100,6 @@ class AmanWindow(QMainWindow):
         self.status.setStyleSheet("color: #888; padding: 4px;")
         layout.addWidget(self.status)
 
-        self.runtime_button.clicked.connect(self.install_runtime)
-        self.download_button.clicked.connect(self.download_model)
         self.start_button.clicked.connect(self.start_engine)
         self.send_button.clicked.connect(self.send_message)
         self.setCentralWidget(root)
@@ -131,7 +125,7 @@ class AmanWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             QMessageBox.information(self, "Aman", "Another task is already running.")
             return
-        for button in (self.runtime_button, self.download_button, self.start_button, self.send_button):
+        for button in (self.start_button, self.send_button):
             button.setEnabled(False)
         self.worker = TaskWorker(task, self)
         self.worker.progress.connect(self._set_status)
@@ -139,18 +133,6 @@ class AmanWindow(QMainWindow):
         self.worker.failed.connect(self._worker_failed)
         self.worker.finished.connect(self._worker_finished)
         self.worker.start()
-
-    def install_runtime(self):
-        self._run_worker(
-            lambda report: self.runtime_manager.ensure_runtime(report),
-            "Official llama.cpp Windows CPU runtime is ready.",
-        )
-
-    def download_model(self):
-        self._run_worker(
-            lambda report: self.model_manager.ensure_model(report),
-            "Model downloaded and SHA-256 verified.",
-        )
 
     def start_engine(self):
         def start(report):
@@ -196,7 +178,7 @@ class AmanWindow(QMainWindow):
         QMessageBox.critical(self, "Aman", message)
 
     def _worker_finished(self):
-        for button in (self.runtime_button, self.download_button, self.start_button, self.send_button):
+        for button in (self.start_button, self.send_button):
             button.setEnabled(True)
 
     def closeEvent(self, event):
