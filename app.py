@@ -328,14 +328,12 @@ class AmanWindow(QMainWindow):
             ".suggestions a { display:inline-block; color:#343434; background:#ffffff; border:1px solid #e5e7eb; border-radius:13px; padding:13px 16px; margin:6px; text-decoration:none; font-size:12px; } "
             ".suggestions a:hover { background:#f3f4f6; border-color:#c9cdd4; color:#111827; } "
             ".row { margin:18px auto; max-width:900px; } "
-            ".row-user { text-align:right; } .row-assistant { text-align:left; } "
             ".who { color:#737780; font-size:11px; font-weight:600; margin-bottom:7px; } "
-            ".user { display:inline-block; background:#f1f1f1; border:1px solid #e7e7e7; border-radius:18px; padding:12px 16px; color:#202123; text-align:left; } "
-            ".assistant { display:inline-block; background:#f7f7f8; border:1px solid #ededee; border-radius:18px; padding:12px 16px; color:#202123; line-height:1.7; text-align:left; } "
+            "p { margin:3px 0; } "
         )
         self._show_welcome("Ask Aman anything. Your AI runs right here on your computer.")
         self.chat.setStyleSheet(
-            "QTextBrowser { background:#111318; color:#e8eaf0; border:0; padding:20px 8%; }"
+            "QTextBrowser { background:#ffffff; color:#202123; border:0; padding:20px 8%; selection-background-color:#dbeafe; }"
         )
         self.content_stack = QStackedWidget()
         self.content_stack.addWidget(self.chat)
@@ -567,9 +565,23 @@ class AmanWindow(QMainWindow):
         message = re.sub(r"</?think>", "", message, flags=re.I).strip()
         safe = html.escape(message).replace("\n", "<br>")
         if speaker == "You":
-            block = f"<div class='row row-user'><div class='who'>You</div><div class='user'>{safe}</div></div>"
+            block = (
+                "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='right'>"
+                "<table align='right' cellspacing='0' cellpadding='11' bgcolor='#f1f1f1' "
+                "style='border:1px solid #e7e7e7; border-radius:18px;'><tr><td>"
+                "<p style='color:#737780; font-size:9pt; margin:0 0 5px 0;'>You</p>"
+                f"<p style='color:#202123; margin:0;'>{safe}</p>"
+                "</td></tr></table></td></tr></table>"
+            )
         else:
-            block = f"<div class='row row-assistant'><div class='who'>✦ &nbsp; Aman</div><div class='assistant'>{safe}</div></div>"
+            block = (
+                "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='left'>"
+                "<table align='left' cellspacing='0' cellpadding='11' bgcolor='#f7f7f8' "
+                "style='border:1px solid #ededee; border-radius:18px;'><tr><td>"
+                "<p style='color:#737780; font-size:9pt; margin:0 0 5px 0;'>✦ &nbsp; Aman</p>"
+                f"<p style='color:#202123; margin:0;'>{safe}</p>"
+                "</td></tr></table></td></tr></table>"
+            )
         cursor = self.chat.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         cursor.insertHtml(block)
@@ -720,7 +732,13 @@ class AmanWindow(QMainWindow):
     def _begin_streamed_reply(self):
         cursor = self.chat.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertHtml("<div class='row row-assistant'><div class='who'>✦ &nbsp; Aman</div><div class='assistant'>")
+        cursor.insertHtml(
+            "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='left'>"
+            "<table align='left' cellspacing='0' cellpadding='11' bgcolor='#f7f7f8' "
+            "style='border:1px solid #ededee; border-radius:18px;'><tr><td>"
+            "<p style='color:#737780; font-size:9pt; margin:0 0 5px 0;'>✦ &nbsp; Aman</p>"
+            "<p style='color:#202123; margin:0;'>"
+        )
         self._stream_cursor = cursor
         self._stream_raw = ""
         self._stream_displayed = 0
@@ -765,7 +783,7 @@ class AmanWindow(QMainWindow):
         self.refresh_history_list(select_id=self.active_conversation_id)
         self._last_answer = clean
         self.copy_button.show()
-        self._stream_cursor.insertHtml("</div></div>")
+        self._stream_cursor.insertHtml("</p></td></tr></table></td></tr></table>")
         self._stream_open = False
         self._stream_cursor.insertBlock()
         self.chat.setTextCursor(self._stream_cursor)
