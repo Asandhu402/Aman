@@ -35,7 +35,10 @@ class TaskWorker(QThread):
         try:
             self.succeeded.emit(self.task(self.progress.emit))
         except Exception as exc:
-            self.failed.emit(str(exc))
+            detail = str(exc).strip()
+            if not detail and getattr(exc, "reason", None) is not None:
+                detail = repr(exc.reason)
+            self.failed.emit(f"{type(exc).__name__}: {detail or repr(exc)}")
 
 
 class AmanWindow(QMainWindow):
