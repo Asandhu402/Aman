@@ -768,23 +768,13 @@ class AmanWindow(QMainWindow):
         self.worker.start()
 
     def _begin_streamed_reply(self):
-        cursor = self.chat.textCursor()
-        cursor.movePosition(QTextCursor.MoveOperation.End)
-        cursor.insertHtml(
-            "<table width='100%' cellspacing='0' cellpadding='0'><tr><td align='left' "
-            "style='padding:9px 0;'>"
-            "<table align='left' cellspacing='0' cellpadding='13' bgcolor='#f7f7f8' "
-            "style='border:1px solid #ededee; border-radius:26px;'><tr><td>"
-            "<p style='color:#737780; font-size:9pt; margin:0 0 5px 0;'>✦ &nbsp; Aman</p>"
-            "<p style='color:#202123; margin:0;'>"
-        )
-        self._stream_cursor = cursor
+        # Stream by rebuilding a complete, valid bubble. QTextBrowser auto-closes
+        # unfinished HTML tables, which otherwise places streamed text outside them.
         self._stream_raw = ""
         self._stream_displayed = 0
         self._stream_pending.clear()
         self._stream_open = True
-        self.chat.setTextCursor(cursor)
-        self.chat.ensureCursorVisible()
+        self._stream_cursor = self.chat.textCursor()
 
     def _append_stream_chunk(self, chunk: str):
         self._stream_pending.append(chunk)
@@ -804,10 +794,11 @@ class AmanWindow(QMainWindow):
         if visible.startswith("<think") and not re.search(r"</think>", self._stream_raw, flags=re.I):
             visible = ""
         if len(visible) > self._stream_displayed:
-            self._stream_cursor.insertText(visible[self._stream_displayed:])
             self._stream_displayed = len(visible)
-            self.chat.setTextCursor(self._stream_cursor)
-            self.chat.ensureCursorVisible()
+            self.chat.clear()
+            for item in self.history:
+                self._append("You" if item["role"] == "user" else "Aman", item["content"])
+            self._append("Aman", visible)
 
     def _finish_streamed_reply(self, answer: str):
         self._log("INFO", f"Assistant reply completed ({len(answer)} characters)")
@@ -822,11 +813,7 @@ class AmanWindow(QMainWindow):
         self.refresh_history_list(select_id=self.active_conversation_id)
         self._last_answer = clean
         self.copy_button.show()
-        self._stream_cursor.insertHtml("</p></td></tr></table></td></tr></table>")
         self._stream_open = False
-        self._stream_cursor.insertBlock()
-        self.chat.setTextCursor(self._stream_cursor)
-        self.chat.ensureCursorVisible()
         self._set_status("Local model ready.")
         self.ready_badge.setText("●  Ready")
 
@@ -906,8 +893,6 @@ class AmanWindow(QMainWindow):
         self._stream_flush_timer.stop()
         self._flush_stream_chunks()
         if self._stream_open:
-            self._stream_cursor.insertHtml("</div></div>")
-            self._stream_cursor.insertBlock()
             self._stream_open = False
         self._stop_thinking()
         self._set_status("Something went wrong. Please try again.")
