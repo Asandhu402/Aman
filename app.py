@@ -5,7 +5,7 @@ import re
 import sys
 
 from PySide6.QtCore import QThread, Signal, QTimer, Qt, QPropertyAnimation, QEasingCurve
-from PySide6.QtGui import QFont, QTextCursor
+from PySide6.QtGui import QFont, QKeySequence, QShortcut, QTextCursor
 from PySide6.QtWidgets import (
     QApplication, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar,
@@ -62,6 +62,12 @@ class AmanWindow(QMainWindow):
         self._thinking_timer = QTimer(self)
         self._thinking_timer.setInterval(420)
         self._thinking_timer.timeout.connect(self._animate_thinking)
+        self._welcome_prompts = {
+            "learn": "Teach me something interesting in simple words.",
+            "write": "Help me write a clear and professional message.",
+            "ideas": "Help me brainstorm some creative ideas.",
+            "explain": "Explain a complex topic step by step.",
+        }
         self._build_ui()
         self._set_status("Preparing your private local assistant…")
 
@@ -158,17 +164,20 @@ class AmanWindow(QMainWindow):
         self.chat.setViewportMargins(0, 0, 0, 0)
         self.chat.document().setDefaultStyleSheet(
             "body { color:#e8eaf0; font-family:'Segoe UI'; font-size:14px; } "
-            ".welcome { text-align:center; color:#f2f3f5; font-size:27px; font-weight:600; margin-top:100px; } "
-            ".hint { text-align:center; color:#9299a7; font-size:14px; margin-top:12px; } "
-            ".row { margin:20px auto; max-width:760px; } "
-            ".who { color:#9ca6b8; font-size:12px; font-weight:600; margin-bottom:8px; } "
-            ".user { background:#252a35; border:1px solid #343b49; border-radius:15px; padding:13px 16px; color:#f4f5f7; } "
-            ".assistant { color:#e8eaf0; padding:5px 2px 16px 2px; line-height:1.75; } "
+            ".welcome-wrap { max-width:720px; margin:72px auto 0 auto; text-align:center; } "
+            ".welcome-mark { display:inline-block; background:#e8edf7; color:#171a20; border-radius:18px; padding:13px 18px; font-size:23px; font-weight:700; margin-bottom:20px; } "
+            ".welcome { color:#f5f6fa; font-size:30px; font-weight:650; margin:8px 0 12px 0; } "
+            ".hint { color:#929bad; font-size:14px; line-height:1.6; margin-bottom:30px; } "
+            ".suggestions { text-align:center; margin:0 auto; } "
+            ".suggestions a { display:inline-block; color:#dbe4f4; background:#202631; border:1px solid #343e4e; border-radius:13px; padding:13px 16px; margin:6px; text-decoration:none; font-size:12px; } "
+            ".suggestions a:hover { background:#303b4d; border-color:#667b9b; color:#ffffff; } "
+            ".row { margin:22px auto; max-width:760px; } "
+            ".who { color:#a5b1c4; font-size:12px; font-weight:600; margin-bottom:9px; } "
+            ".user { background:#252c38; border:1px solid #394456; border-radius:16px; padding:14px 17px; color:#f4f5f7; } "
+            ".assistant { color:#e8eaf0; padding:5px 2px 18px 2px; line-height:1.8; } "
         )
-        self.chat.setHtml(
-            "<div class='welcome'>What would you like to explore?</div>"
-            "<div class='hint'>Ask Aman anything. Your AI runs right here on your computer.</div>"
-        )
+        self.chat.anchorClicked.connect(self._welcome_link_clicked)
+        self._show_welcome("Ask Aman anything. Your AI runs right here on your computer.")
         self.chat.setStyleSheet(
             "QTextBrowser { background:#111318; color:#e8eaf0; border:0; padding:20px 8%; }"
         )
@@ -223,6 +232,12 @@ class AmanWindow(QMainWindow):
 
         outer.addWidget(main, 1)
         self.setCentralWidget(root)
+        self._focus_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
+        self._focus_shortcut.activated.connect(self.message_input.setFocus)
+        self._new_chat_shortcut = QShortcut(QKeySequence("Ctrl+Shift+N"), self)
+        self._new_chat_shortcut.activated.connect(self.new_chat)
+        self._copy_shortcut = QShortcut(QKeySequence("Ctrl+Shift+C"), self)
+        self._copy_shortcut.activated.connect(self.copy_last_answer)
         self._root_opacity = QGraphicsOpacityEffect(root)
         self._root_opacity.setOpacity(0.0)
         root.setGraphicsEffect(self._root_opacity)
@@ -237,7 +252,7 @@ class AmanWindow(QMainWindow):
             QPushButton#newChat { background:#252a34; color:#f0f2f6; border:1px solid #3a414e; border-radius:9px; padding:12px; text-align:left; font-size:13px; }
             QPushButton#newChat:hover { background:#343c4b; border-color:#56647b; }
             QPushButton#newChat:pressed { background:#202630; }
-            QFrame#topbar { background:#111318; border-bottom:1px solid #252a33; }
+            QFrame#topbar { background:qlineargradient(x1:0,y1:0,x2:1,y2:0,stop:0 #151923,stop:0.55 #111318,stop:1 #171b25); border-bottom:1px solid #2a303c; }
             QLabel#topTitle { color:#f1f2f5; font-size:15px; font-weight:600; }
             QPushButton#iconButton { background:#202630; color:#dce3ef; border:1px solid #343d4c; border-radius:10px; font-size:17px; }
             QPushButton#iconButton:hover { background:#303949; }
@@ -246,7 +261,7 @@ class AmanWindow(QMainWindow):
             QLabel#topSubtitle { color:#7f8999; font-size:11px; }
             QLabel#statusBadge { color:#a8b4c7; background:#202630; border:1px solid #303947; border-radius:12px; padding:7px 11px; font-size:11px; }
             QFrame#bottomPanel { background:#111318; }
-            QFrame#composer { background:#1d222c; border:1px solid #3b4555; border-radius:20px; }
+            QFrame#composer { background:qlineargradient(x1:0,y1:0,x2:0,y2:1,stop:0 #252c38,stop:1 #1a1f28); border:1px solid #465267; border-radius:20px; }
             QFrame#composer:hover { border-color:#58677f; }
             QLineEdit#messageInput { background:transparent; color:#f3f4f6; border:0; padding:9px 4px; font-size:14px; }
             QPushButton#sendButton { background:#e9edf5; color:#171a20; border:0; border-radius:13px; font-size:23px; font-weight:600; }
@@ -274,6 +289,27 @@ class AmanWindow(QMainWindow):
         animation.finished.connect(lambda: self._animations.remove(animation) if animation in self._animations else None)
         self._animations.append(animation)
         animation.start()
+
+    def _show_welcome(self, hint: str):
+        self.chat.setHtml(
+            "<div class='welcome-wrap'>"
+            "<div class='welcome-mark'>A</div>"
+            "<div class='welcome'>A little space for big ideas.</div>"
+            f"<div class='hint'>{html.escape(hint)}</div>"
+            "<div class='suggestions'>"
+            "<a href='prompt:learn'>✦ &nbsp; Learn something</a>"
+            "<a href='prompt:write'>✎ &nbsp; Write together</a>"
+            "<a href='prompt:ideas'>◇ &nbsp; Brainstorm ideas</a>"
+            "<a href='prompt:explain'>◎ &nbsp; Explain a topic</a>"
+            "</div></div>"
+        )
+
+    def _welcome_link_clicked(self, url):
+        key = url.toString().replace("prompt:", "", 1)
+        prompt = self._welcome_prompts.get(key)
+        if prompt:
+            self.message_input.setText(prompt)
+            self.message_input.setFocus()
 
     def toggle_sidebar(self):
         if self._sidebar_animation and self._sidebar_animation.state() == QPropertyAnimation.State.Running:
@@ -394,6 +430,8 @@ class AmanWindow(QMainWindow):
             self._set_status("Aman is still getting ready. You can chat in a moment.")
             return
         self.message_input.clear()
+        if not self.history:
+            self.chat.clear()
         self._append("You", prompt)
         self.history.append({"role": "user", "content": prompt})
         self.send_button.setEnabled(False)
@@ -417,10 +455,7 @@ class AmanWindow(QMainWindow):
         self._last_answer = ""
         self.copy_button.hide()
         self.chat.clear()
-        self.chat.setHtml(
-            "<div class='welcome'>What would you like to explore?</div>"
-            "<div class='hint'>A fresh conversation with your local AI assistant.</div>"
-        )
+        self._show_welcome("A fresh conversation. Choose a starting point or ask anything.")
         self._set_status("New conversation")
 
     def _receive_reply(self, answer: str):
