@@ -478,9 +478,9 @@ class AmanWindow(QMainWindow):
         # Handle explicit navigation requests locally; no model or internet
         # access is needed to open a site in the user's default browser.
         match = re.fullmatch(
-            r"\\s*(?:please\\s+)?(?:go\\s+to|open|visit|navigate\\s+to)\\s+"
-            r"((?:https?://)?(?:www\\.)?[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?"
-            r"\\.[a-zA-Z]{2,}(?::[0-9]{1,5})?(?:/[^\\s]*)?)\\s*[.!]?\\s*",
+            r"\s*(?:please\s+)?(?:go\s+to|open|visit|navigate\s+to)\s+"
+            r"((?:https?://)?(?:www\.)?[a-zA-Z0-9](?:[a-zA-Z0-9.-]*[a-zA-Z0-9])?"
+            r"\.[a-zA-Z]{2,}(?::[0-9]{1,5})?(?:/[^\s]*)?)\s*[.!]?\s*",
             prompt,
             flags=re.I,
         )
