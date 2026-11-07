@@ -62,12 +62,6 @@ class AmanWindow(QMainWindow):
         self._thinking_timer = QTimer(self)
         self._thinking_timer.setInterval(420)
         self._thinking_timer.timeout.connect(self._animate_thinking)
-        self._welcome_prompts = {
-            "learn": "Teach me something interesting in simple words.",
-            "write": "Help me write a clear and professional message.",
-            "ideas": "Help me brainstorm some creative ideas.",
-            "explain": "Explain a complex topic step by step.",
-        }
         self._build_ui()
         self._set_status("Preparing your private local assistant…")
 
@@ -177,7 +171,6 @@ class AmanWindow(QMainWindow):
             ".user { background:#252c38; border:1px solid #394456; border-radius:16px; padding:14px 17px; color:#f4f5f7; } "
             ".assistant { color:#e8eaf0; padding:5px 2px 18px 2px; line-height:1.8; } "
         )
-        self.chat.anchorClicked.connect(self._welcome_link_clicked)
         self._show_welcome("Ask Aman anything. Your AI runs right here on your computer.")
         self.chat.setStyleSheet(
             "QTextBrowser { background:#111318; color:#e8eaf0; border:0; padding:20px 8%; }"
@@ -293,16 +286,12 @@ class AmanWindow(QMainWindow):
 
     def _show_welcome(self, hint: str):
         self.chat.setHtml(
-            "<div class='welcome-wrap'>"
-            "<div class='welcome-mark'>A</div>"
-            "<div class='welcome'>A little space for big ideas.</div>"
-            f"<div class='hint'>{html.escape(hint)}</div>"
-            "<div class='suggestions'>"
-            "<a href='prompt:learn'>✦ &nbsp; Learn something</a>"
-            "<a href='prompt:write'>✎ &nbsp; Write together</a>"
-            "<a href='prompt:ideas'>◇ &nbsp; Brainstorm ideas</a>"
-            "<a href='prompt:explain'>◎ &nbsp; Explain a topic</a>"
-            "</div></div>"
+            "<div style='text-align:center; margin-top:150px;'>"
+            "<div style='color:#f3f4f6; font-family:Segoe UI; "
+            "font-size:30px; font-weight:600;'>Welcome to Aman</div>"
+            f"<div style='color:#929bad; font-family:Segoe UI; "
+            f"font-size:14px; margin-top:12px;'>{html.escape(hint)}</div>"
+            "</div>"
         )
 
     def _welcome_link_clicked(self, url):
