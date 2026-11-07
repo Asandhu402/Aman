@@ -638,6 +638,11 @@ class AmanWindow(QMainWindow):
             report("Checking the model and local runtime…")
             model_path = self.model_manager.ensure_model(report)
             self.runtime_manager.ensure_runtime(report)
+            if self.runtime_manager.has_intel_npu():
+                try:
+                    self.runtime_manager.ensure_openvino_runtime(report)
+                except Exception as exc:
+                    report(f"OpenVINO NPU setup unavailable; continuing with Intel graphics/CPU: {exc}")
             self.engine.start(model_path, report)
         self._run_worker(start, "Aman's local model is ready.")
 
