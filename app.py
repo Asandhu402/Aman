@@ -143,17 +143,30 @@ class BrowserPanel(QWidget):
             self.page_loaded.emit(self.view.title(), self.view.url().toString(), "")
             return
         self.page_label.setText("Page loaded. Select 'Use page in chat' to discuss it.")
-        self.view.page().runJavaScript(
-            "document.body ? document.body.innerText.slice(0, 28000) : ''",
-            self._capture_text,
-        )
+        self.view.page().runJavaScript(self._extract_page_script(), self._capture_text)
+
+    @staticmethod
+    def _extract_page_script():
+        return r"""(() => {
+            const text = document.body ? document.body.innerText.slice(0, 24000) : '';
+            const links = Array.from(document.querySelectorAll('a[href]'))
+                .map(a => ({
+                    label: (a.innerText || a.getAttribute('aria-label') || '').trim().replace(/\\s+/g, ' '),
+                    url: a.href
+                }))
+                .filter(item => item.label && /^https?:/.test(item.url))
+                .filter((item, index, all) => all.findIndex(other => other.url === item.url) === index)
+                .slice(0, 15);
+            return text + '\\n\\nLINKS FOUND ON PAGE:\\n' +
+                links.map(item => item.label + ' — ' + item.url).join('\\n');
+        })()"""
 
     def _capture_text(self, text):
         self.page_loaded.emit(self.view.title(), self.view.url().toString(), text or "")
 
     def use_current_page(self):
         self.view.page().runJavaScript(
-            "document.body ? document.body.innerText.slice(0, 28000) : ''",
+            self._extract_page_script(),
             lambda text: self.use_page_requested.emit(
                 self.view.title(), self.view.url().toString(), text or ""
             ),
