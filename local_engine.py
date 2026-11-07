@@ -18,10 +18,19 @@ class AmanEngine:
         self.acceleration = "Not started"
         self.generation_speed = 0.0
         self.selected_threads: int | None = None
+        self.backend_device = "CPU/Vulkan"
 
     @property
     def is_ready(self) -> bool:
         return self.process is not None and self.process.poll() is None
+
+    def _openvino_runtime_path(self) -> Path | None:
+        root = Path(__file__).resolve().parent / "runtime-openvino"
+        direct = root / "llama-server.exe"
+        if direct.is_file():
+            return direct
+        matches = list(root.rglob("llama-server.exe")) if root.exists() else []
+        return matches[0] if len(matches) == 1 else None
 
     def _runtime_path(self) -> Path:
         runtime_dir = Path(__file__).resolve().parent / "runtime"
@@ -49,21 +58,25 @@ class AmanEngine:
 
     def _launch(
         self, executable: Path, model_path: Path, gpu_layers: int,
-        report, threads: int | None = None,
+        report, threads: int | None = None, runtime_env: dict[str, str] | None = None,
+        context_size: int | None = None,
     ) -> bool:
         command = [
             str(executable), "--model", str(model_path),
             "--host", "127.0.0.1", "--port", str(self.port),
-            "--ctx-size", os.getenv("AMAN_CONTEXT_SIZE", "4096"),
+            "--ctx-size", str(context_size or os.getenv("AMAN_CONTEXT_SIZE", "4096")),
             "--parallel", "1", "--reasoning-format", "none",
             "--n-gpu-layers", str(gpu_layers),
         ]
         if threads is not None:
             command.extend(["--threads", str(threads), "--threads-batch", str(threads)])
         creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        process_env = os.environ.copy()
+        if runtime_env:
+            process_env.update(runtime_env)
         self.process = subprocess.Popen(
             command, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL, creationflags=creationflags,
+            stderr=subprocess.DEVNULL, creationflags=creationflags, env=process_env,
         )
         if self._wait_until_healthy():
             return True
@@ -173,21 +186,30 @@ class AmanEngine:
             report("Saved performance settings did not start; testing available modes again.")
 
         # Only benchmark after a new install or if the saved setup stops working.
-        candidates = [
-            ("Vulkan GPU", 99, None),
-            ("CPU · 8 threads", 0, 8),
-            ("CPU · 10 threads", 0, 10),
-            ("CPU · 12 threads", 0, 12),
-        ]
-        results: list[tuple[float, str, int, int | None]] = []
-        for label, gpu_layers, threads in candidates:
+        candidates = []
+        openvino_executable = self._openvino_runtime_path()
+        if openvino_executable is not None:
+            cache_dir = Path(os.getenv("LOCALAPPDATA", Path.home() / "AppData/Local")) / "Aman" / "openvino-cache"
+            candidates.append(("OpenVINO NPU", openvino_executable, 0, None, {
+                "GGML_OPENVINO_DEVICE": "NPU",
+                "GGML_OPENVINO_STATEFUL_EXECUTION": "0",
+                "GGML_OPENVINO_CACHE_DIR": str(cache_dir),
+            }, int(os.getenv("AMAN_NPU_CONTEXT_SIZE", "2048"))))
+        candidates.extend([
+            ("Vulkan GPU", executable, 99, None, None, None),
+            ("CPU · 8 threads", executable, 0, 8, None, None),
+            ("CPU · 10 threads", executable, 0, 10, None, None),
+            ("CPU · 12 threads", executable, 0, 12, None, None),
+        ])
+        results: list[tuple[float, str, int, int | None, Path, dict[str, str] | None, int | None]] = []
+        for label, candidate_executable, gpu_layers, threads, runtime_env, context_size in candidates:
             report(f"Benchmarking {label}…")
-            if not self._launch(executable, model_path, gpu_layers, report, threads):
+            if not self._launch(candidate_executable, model_path, gpu_layers, report, threads, runtime_env, context_size):
                 report(f"{label} could not start; skipping this option.")
                 continue
             try:
                 speed = self._benchmark()
-                results.append((speed, label, gpu_layers, threads))
+                results.append((speed, label, gpu_layers, threads, candidate_executable, runtime_env, context_size))
                 report(f"{label}: {speed:.1f} tokens/second.")
             except Exception as exc:
                 report(f"{label} benchmark failed: {exc}")
@@ -200,12 +222,14 @@ class AmanEngine:
                 "Check the Intel graphics driver and available memory."
             )
 
-        speed, label, gpu_layers, threads = max(results, key=lambda item: item[0])
-        self._save_cached_choice(executable, model_path, (label, gpu_layers, threads, speed))
+        speed, label, gpu_layers, threads, selected_executable, selected_env, selected_context = max(results, key=lambda item: item[0])
+        if selected_executable == executable:
+            self._save_cached_choice(executable, model_path, (label, gpu_layers, threads, speed))
         report(f"Fastest tested mode: {label} at {speed:.1f} tokens/second. Starting it…")
-        if not self._launch(executable, model_path, gpu_layers, report, threads):
+        if not self._launch(selected_executable, model_path, gpu_layers, report, threads, selected_env, selected_context):
             raise RuntimeError(f"Aman benchmarked {label} successfully but could not restart it.")
         self.acceleration = label
+        self.backend_device = "NPU" if label == "OpenVINO NPU" else label
         self.generation_speed = speed
         self.selected_threads = threads
         report(f"Local AI ready · {label} · benchmark {speed:.1f} tokens/second.")
