@@ -174,11 +174,12 @@ class AmanEngine:
             ) from exc
 
         cached = self._load_cached_choice(executable, model_path)
-        if cached is not None:
+        if cached is not None and self._openvino_runtime_path() is None:
             label, gpu_layers, threads, speed = cached
             report(f"Starting with your previously tested {label} settings…")
             if self._launch(executable, model_path, gpu_layers, report, threads):
                 self.acceleration = label
+                self.backend_device = label
                 self.generation_speed = speed
                 self.selected_threads = threads
                 report(f"Local AI ready · {label} · cached benchmark {speed:.1f} tokens/second.")
