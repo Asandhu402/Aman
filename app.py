@@ -9,8 +9,10 @@ from PySide6.QtGui import QDesktopServices, QFont, QKeySequence, QShortcut, QTex
 from PySide6.QtWidgets import (
     QApplication, QFrame, QGraphicsDropShadowEffect, QGraphicsOpacityEffect,
     QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox, QProgressBar,
-    QPushButton, QTextBrowser, QVBoxLayout, QWidget,
+    QPushButton, QTextBrowser, QVBoxLayout, QWidget, QListWidget, QListWidgetItem,
 )
+
+from conversation_store import ConversationStore
 
 from local_engine import AmanEngine
 from model_manager import ModelManager
@@ -54,6 +56,8 @@ class AmanWindow(QMainWindow):
         self.model_manager = ModelManager()
         self.runtime_manager = RuntimeManager()
         self.history: list[dict[str, str]] = []
+        self.conversation_store = ConversationStore()
+        self.active_conversation_id: str | None = None
         self.worker = None
         self._animations = []
         self._sidebar_animation = None
@@ -103,10 +107,17 @@ class AmanWindow(QMainWindow):
         section.setObjectName("sectionLabel")
         side.addWidget(section)
 
-        current = QLabel("●   Current conversation")
-        current.setObjectName("currentConversation")
-        side.addWidget(current)
-        side.addStretch(1)
+        section = QLabel("CHAT HISTORY")
+        section.setObjectName("sectionLabel")
+        side.addWidget(section)
+        self.history_list = QListWidget()
+        self.history_list.setObjectName("historyList")
+        self.history_list.itemClicked.connect(self.open_saved_conversation)
+        side.addWidget(self.history_list, 1)
+        self.delete_chat_button = QPushButton("Delete selected chat")
+        self.delete_chat_button.setObjectName("deleteChat")
+        self.delete_chat_button.clicked.connect(self.delete_selected_conversation)
+        side.addWidget(self.delete_chat_button)
 
         privacy = QLabel("◉  Runs locally on this device\n\nYour conversations stay on your computer.")
         privacy.setObjectName("privacyNote")
@@ -226,6 +237,7 @@ class AmanWindow(QMainWindow):
 
         outer.addWidget(main, 1)
         self.setCentralWidget(root)
+        self.refresh_history_list()
         self._focus_shortcut = QShortcut(QKeySequence("Ctrl+L"), self)
         self._focus_shortcut.activated.connect(self.message_input.setFocus)
         self._new_chat_shortcut = QShortcut(QKeySequence("Ctrl+Shift+N"), self)
@@ -241,7 +253,12 @@ class AmanWindow(QMainWindow):
             QLabel#brandMark { background:#e8edf7; color:#171a20; border-radius:11px; font-size:20px; font-weight:700; }
             QLabel#brandName { color:#f4f5f7; font-size:19px; font-weight:650; }
             QLabel#sectionLabel { color:#737d8e; font-size:10px; font-weight:700; letter-spacing:1px; margin-top:20px; }
-            QLabel#currentConversation { color:#e7eaf0; background:#292e39; border-radius:8px; padding:11px 9px; font-size:12px; }
+            QListWidget#historyList { background:transparent; border:0; color:#cbd3e1; outline:0; font-size:12px; }
+            QListWidget#historyList::item { padding:10px 9px; border-radius:8px; margin:1px 0; }
+            QListWidget#historyList::item:hover { background:#252b36; }
+            QListWidget#historyList::item:selected { background:#303846; color:#ffffff; }
+            QPushButton#deleteChat { background:transparent; color:#929bad; border:1px solid #343b47; border-radius:8px; padding:8px; font-size:11px; }
+            QPushButton#deleteChat:hover { background:#34272b; color:#f0b6bd; border-color:#69434a; }
             QLabel#privacyNote { color:#8992a2; background:#20242d; border:1px solid #2d333e; border-radius:10px; padding:12px; font-size:11px; }
             QPushButton#newChat { background:#252a34; color:#f0f2f6; border:1px solid #3a414e; border-radius:9px; padding:12px; text-align:left; font-size:13px; }
             QPushButton#newChat:hover { background:#343c4b; border-color:#56647b; }
@@ -428,6 +445,10 @@ class AmanWindow(QMainWindow):
             self.chat.clear()
         self._append("You", prompt)
         self.history.append({"role": "user", "content": prompt})
+        if self.active_conversation_id is None:
+            self.active_conversation_id = self.conversation_store.create_conversation(prompt)
+        self.conversation_store.add_message(self.active_conversation_id, "user", prompt)
+        self.refresh_history_list(select_id=self.active_conversation_id)
         self.send_button.setEnabled(False)
         self._start_thinking()
 
@@ -446,17 +467,67 @@ class AmanWindow(QMainWindow):
         if self.worker and self.worker.isRunning():
             return
         self.history.clear()
+        self.active_conversation_id = None
         self._last_answer = ""
         self.copy_button.hide()
         self.chat.clear()
-        self._show_welcome("A fresh conversation. Choose a starting point or ask anything.")
+        self.history_list.clearSelection()
+        self._show_welcome("A fresh conversation. Ask Aman anything.")
         self._set_status("New conversation")
+
+    def refresh_history_list(self, select_id=None):
+        self.history_list.blockSignals(True)
+        self.history_list.clear()
+        selected = None
+        for conversation in self.conversation_store.list_conversations():
+            item = QListWidgetItem(conversation["title"])
+            item.setData(Qt.ItemDataRole.UserRole, conversation["id"])
+            item.setToolTip(conversation["updated_at"])
+            self.history_list.addItem(item)
+            if conversation["id"] == select_id:
+                selected = item
+        if selected is not None:
+            self.history_list.setCurrentItem(selected)
+        self.history_list.blockSignals(False)
+
+    def open_saved_conversation(self, item):
+        if self.worker and self.worker.isRunning():
+            return
+        chat_id = item.data(Qt.ItemDataRole.UserRole)
+        messages = self.conversation_store.get_messages(chat_id)
+        if not messages:
+            return
+        self.active_conversation_id = chat_id
+        self.history = [{"role": m["role"], "content": m["content"]} for m in messages]
+        self._last_answer = next((m["content"] for m in reversed(messages) if m["role"] == "assistant"), "")
+        self.copy_button.setVisible(bool(self._last_answer))
+        self.chat.clear()
+        for message in messages:
+            self._append("You" if message["role"] == "user" else "Aman", message["content"])
+        self._set_status("Saved conversation opened.")
+
+    def delete_selected_conversation(self):
+        item = self.history_list.currentItem()
+        if item is None:
+            return
+        chat_id = item.data(Qt.ItemDataRole.UserRole)
+        answer = QMessageBox.question(self, "Delete conversation", "Delete this saved conversation permanently?")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.conversation_store.delete_conversation(chat_id)
+        if self.active_conversation_id == chat_id:
+            self.new_chat()
+        self.refresh_history_list()
+        self._set_status("Conversation deleted.")
 
     def _receive_reply(self, answer: str):
         self._stop_thinking()
         clean = re.sub(r"<think>.*?</think>", "", answer, flags=re.I | re.S).strip()
         clean = re.sub(r"</?think>", "", clean, flags=re.I).strip()
         self.history.append({"role": "assistant", "content": clean})
+        if self.active_conversation_id is not None:
+            self.conversation_store.add_message(self.active_conversation_id, "assistant", clean)
+        self.refresh_history_list(select_id=self.active_conversation_id)
         self._last_answer = clean
         self.copy_button.show()
         self._append("Aman", clean)
